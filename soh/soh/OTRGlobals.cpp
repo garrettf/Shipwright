@@ -1132,11 +1132,21 @@ void OTRAudio_Thread() {
 
             if (lastAudioDebugLogTime == 0 || now - lastAudioDebugLogTime >= freq) {
                 lastAudioDebugLogTime = now;
+                const auto& stretchStats = sGameSpeedTimeStretch.GetStats();
+                const float effectiveHopRatio =
+                    stretchStats.wsolaOutputFrames > 0
+                        ? (float)stretchStats.wsolaInputAdvanceFrames / (float)stretchStats.wsolaOutputFrames
+                        : 0.0f;
                 SPDLOG_INFO("[GameSpeedAudio] mode={} effectiveMode={} speed={:.2f} in={} out={} muted={}", audioMode,
                             effectiveAudioMode, gameSpeed,
                             sAudioDebugInputSamples.load(std::memory_order_relaxed),
                             sAudioDebugOutputSamples.load(std::memory_order_relaxed),
                             sAudioDebugMutedBlocks.load(std::memory_order_relaxed));
+                SPDLOG_INFO(
+                    "[GameSpeedAudio] fifoIn={} fifoOut={} wsolaHops={} hopRatio={:.3f} resets={} underrunFrames={}",
+                    sGameSpeedTimeStretch.GetInputFramesBuffered(), sGameSpeedTimeStretch.GetOutputFramesBuffered(),
+                    stretchStats.wsolaHops, effectiveHopRatio, stretchStats.synthesisResets,
+                    stretchStats.underrunFrames);
             }
         }
 

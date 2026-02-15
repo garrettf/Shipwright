@@ -14,10 +14,18 @@ void GameSpeedTimeStretch::Reset() {
 }
 
 void GameSpeedTimeStretch::Configure(int32_t sampleRate, int32_t channels) {
-    mSampleRate = std::max<int32_t>(sampleRate, 8000);
-    mChannels = std::clamp<int32_t>(channels, 1, 8);
+    const int32_t newSampleRate = std::max<int32_t>(sampleRate, 8000);
+    const int32_t newChannels = std::clamp<int32_t>(channels, 1, 8);
+
+    if (mConfigured && mSampleRate == newSampleRate && mChannels == newChannels) {
+        return;
+    }
+
+    mSampleRate = newSampleRate;
+    mChannels = newChannels;
     RecomputeParameters();
     ResetSynthesisState();
+    mConfigured = true;
 }
 
 void GameSpeedTimeStretch::SetSpeed(float speed) {
@@ -77,6 +85,14 @@ const GameSpeedTimeStretchStats& GameSpeedTimeStretch::GetStats() const {
     return mStats;
 }
 
+size_t GameSpeedTimeStretch::GetInputFramesBuffered() const {
+    return FramesInInput();
+}
+
+size_t GameSpeedTimeStretch::GetOutputFramesBuffered() const {
+    return FramesInOutput();
+}
+
 int16_t GameSpeedTimeStretch::FloatToS16(float value) {
     const float clamped = std::clamp(value, -32768.0f, 32767.0f);
     return static_cast<int16_t>(std::lround(clamped));
@@ -97,6 +113,7 @@ void GameSpeedTimeStretch::ResetSynthesisState() {
     mHasPrevOverlap = false;
     mAnalysisPosFrames = 0;
     mPrevOverlap.assign(static_cast<size_t>(mOverlapFrames) * static_cast<size_t>(mChannels), 0.0f);
+    mStats.synthesisResets++;
 }
 
 void GameSpeedTimeStretch::GenerateOutputFrames(size_t minFrames) {
@@ -124,6 +141,7 @@ void GameSpeedTimeStretch::GenerateDirectOutputFrames(size_t minFrames) {
 void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
     while (FramesInOutput() < minFrames) {
         const size_t inputFrames = FramesInInput();
+        const size_t hopInFrames = HopInFrames();
         if (!mHasPrevOverlap) {
             if (inputFrames < static_cast<size_t>(mWindowFrames)) {
                 return;
@@ -132,7 +150,10 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
             AppendRawHop(0);
             CaptureOverlap(static_cast<size_t>(mHopOutFrames));
             mHasPrevOverlap = true;
-            mAnalysisPosFrames = HopInFrames();
+            mAnalysisPosFrames = hopInFrames;
+            mStats.wsolaHops++;
+            mStats.wsolaInputAdvanceFrames += hopInFrames;
+            mStats.wsolaOutputFrames += static_cast<size_t>(mHopOutFrames);
             DiscardConsumedInput();
             continue;
         }
@@ -146,13 +167,19 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
             return;
         }
 
+        const size_t expectedStart = std::min(mAnalysisPosFrames, maxStart);
         size_t searchStart = 0;
-        if (mAnalysisPosFrames > static_cast<size_t>(mSeekFrames / 2)) {
-            searchStart = mAnalysisPosFrames - static_cast<size_t>(mSeekFrames / 2);
+        if (expectedStart > static_cast<size_t>(mSeekFrames / 2)) {
+            searchStart = expectedStart - static_cast<size_t>(mSeekFrames / 2);
         }
         searchStart = std::min(searchStart, maxStart);
 
-        const size_t searchEnd = std::min(maxStart, mAnalysisPosFrames + static_cast<size_t>(mSeekFrames / 2));
+        // Keep WSOLA progressing forward to avoid tempo droop and attack retrigger loops.
+        const size_t minForwardStart = expectedStart > hopInFrames ? expectedStart - hopInFrames : 0;
+        searchStart = std::max(searchStart, minForwardStart);
+        searchStart = std::min(searchStart, maxStart);
+
+        const size_t searchEnd = std::max(searchStart, std::min(maxStart, expectedStart + static_cast<size_t>(mSeekFrames / 2)));
 
         size_t bestStart = searchStart;
         float bestScore = CorrelationScore(searchStart);
@@ -167,7 +194,13 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
         AppendBlendedHop(bestStart);
         CaptureOverlap(bestStart + static_cast<size_t>(mHopOutFrames));
 
-        mAnalysisPosFrames = bestStart + HopInFrames();
+        const size_t previousAnalysisPos = mAnalysisPosFrames;
+        mAnalysisPosFrames = bestStart + hopInFrames;
+        const size_t analysisAdvance =
+            mAnalysisPosFrames >= previousAnalysisPos ? (mAnalysisPosFrames - previousAnalysisPos) : 0;
+        mStats.wsolaHops++;
+        mStats.wsolaInputAdvanceFrames += analysisAdvance;
+        mStats.wsolaOutputFrames += static_cast<size_t>(mHopOutFrames);
         DiscardConsumedInput();
     }
 }

@@ -11,6 +11,10 @@ struct GameSpeedTimeStretchStats {
     uint64_t inputFramesPushed = 0;
     uint64_t outputFramesPulled = 0;
     uint64_t underrunFrames = 0;
+    uint64_t wsolaHops = 0;
+    uint64_t wsolaInputAdvanceFrames = 0;
+    uint64_t wsolaOutputFrames = 0;
+    uint64_t synthesisResets = 0;
 };
 
 class GameSpeedTimeStretch {
@@ -24,6 +28,8 @@ class GameSpeedTimeStretch {
     size_t PullInterleaved(int16_t* outSamples, size_t requestedFrames);
 
     const GameSpeedTimeStretchStats& GetStats() const;
+    size_t GetInputFramesBuffered() const;
+    size_t GetOutputFramesBuffered() const;
 
   private:
     static int16_t FloatToS16(float value);
@@ -53,6 +59,7 @@ class GameSpeedTimeStretch {
     int32_t mOverlapFrames = 320;
     int32_t mHopOutFrames = 320;
     int32_t mSeekFrames = 960;
+    bool mConfigured = false;
 
     std::deque<int16_t> mInputFifo;
     std::deque<int16_t> mOutputFifo;
