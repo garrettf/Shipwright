@@ -186,6 +186,7 @@ struct Recording {
 };
 
 bool is_recording;
+bool preserve_previous_recording;
 vector<Path*> current_path;
 uint32_t camera_epoch;
 uint32_t previous_camera_epoch;
@@ -452,7 +453,9 @@ unordered_map<Mtx*, MtxF> FrameInterpolation_Interpolate(float step) {
 }
 
 void FrameInterpolation_StartRecord(void) {
-    previous_recording = std::move(current_recording);
+    if (!preserve_previous_recording) {
+        previous_recording = std::move(current_recording);
+    }
     current_recording = {};
     current_path.clear();
     current_path.push_back(&current_recording.root_path);
@@ -464,6 +467,10 @@ void FrameInterpolation_StartRecord(void) {
 void FrameInterpolation_StopRecord(void) {
     previous_camera_epoch = camera_epoch;
     is_recording = false;
+}
+
+void FrameInterpolation_SetPreviousRecordingPreserved(int preserved) {
+    preserve_previous_recording = preserved != 0;
 }
 
 void FrameInterpolation_RecordOpenChild(const void* a, int b) {

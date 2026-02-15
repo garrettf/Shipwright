@@ -1734,6 +1734,8 @@ void RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>
 
 // C->C++ Bridge
 extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFrame) {
+    (void)simStepsThisHostFrame;
+
     {
         std::unique_lock<std::mutex> Lock(audio.mutex);
         audio.processing = true;
@@ -1773,18 +1775,6 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
 
     if (wnd != nullptr) {
         wnd->SetTargetFps(fps);
-    }
-
-    if (simStepsThisHostFrame > 1) {
-        // Keep the same number of render submissions for pacing, but force each
-        // interpolation pass to use the final matrix set from the latest sim step.
-        if (mtx_replacements.empty()) {
-            mtx_replacements.emplace_back();
-        } else {
-            for (auto& replacement : mtx_replacements) {
-                replacement.clear();
-            }
-        }
     }
 
     // When the gfx debugger is active, only run with the final mtx

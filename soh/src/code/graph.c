@@ -8,6 +8,7 @@
 
 #include "soh/Enhancements/gameconsole.h"
 #include "soh/OTRGlobals.h"
+#include "soh/frame_interpolation.h"
 #include "libultraship/bridge.h"
 
 #define GFXPOOL_HEAD_MAGIC 0x1234
@@ -532,12 +533,15 @@ static void RunFrame() {
             }
 
             for (int simStep = 0; simStep < simSteps && GameState_IsRunning(gGameState); simStep++) {
+                FrameInterpolation_SetPreviousRecordingPreserved(simStep > 0);
+
                 if (simStep > 0) {
                     ClearPressedButtons(gGameState);
                 }
 
                 Graph_Update(&runFrameContext.gfxCtx, gGameState, simStep == (simSteps - 1), false);
             }
+            FrameInterpolation_SetPreviousRecordingPreserved(false);
             // ticksB = GetPerfCounter();
 
             if (GfxDebuggerIsDebuggingRequested()) {
