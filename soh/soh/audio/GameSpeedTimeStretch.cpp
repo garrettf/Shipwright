@@ -8,19 +8,31 @@ namespace SOH {
 
 void GameSpeedTimeStretch::Reset() {
     mInputFifo.clear();
+    mOutputFifo.clear();
+    ResetSynthesisState();
     mStats = {};
 }
 
 void GameSpeedTimeStretch::Configure(int32_t sampleRate, int32_t channels) {
     mSampleRate = std::max<int32_t>(sampleRate, 8000);
     mChannels = std::clamp<int32_t>(channels, 1, 8);
+    RecomputeParameters();
+    ResetSynthesisState();
 }
 
 void GameSpeedTimeStretch::SetSpeed(float speed) {
+    const bool wasWsola = mSpeed > 1.01f;
+
     if (std::isnan(speed) || std::isinf(speed)) {
         mSpeed = 1.0f;
     } else {
         mSpeed = std::clamp(speed, 0.125f, 8.0f);
+    }
+
+    const bool nowWsola = mSpeed > 1.01f;
+    if (wasWsola != nowWsola) {
+        mOutputFifo.clear();
+        ResetSynthesisState();
     }
 }
 
@@ -37,20 +49,6 @@ void GameSpeedTimeStretch::PushInterleaved(const int16_t* samples, size_t frames
     mStats.inputFramesPushed += frames;
 }
 
-size_t GameSpeedTimeStretch::PopFrame(int16_t* outSamples) {
-    const size_t neededSamples = static_cast<size_t>(mChannels);
-    if (mInputFifo.size() < neededSamples) {
-        return 0;
-    }
-
-    for (size_t c = 0; c < neededSamples; c++) {
-        outSamples[c] = mInputFifo.front();
-        mInputFifo.pop_front();
-    }
-
-    return 1;
-}
-
 size_t GameSpeedTimeStretch::PullInterleaved(int16_t* outSamples, size_t requestedFrames) {
     if (outSamples == nullptr || requestedFrames == 0 || mChannels <= 0) {
         return 0;
@@ -59,13 +57,12 @@ size_t GameSpeedTimeStretch::PullInterleaved(int16_t* outSamples, size_t request
     const size_t requestedSamples = requestedFrames * static_cast<size_t>(mChannels);
     std::memset(outSamples, 0, requestedSamples * sizeof(int16_t));
 
-    size_t producedFrames = 0;
-    int16_t* write = outSamples;
-    for (; producedFrames < requestedFrames; producedFrames++) {
-        if (PopFrame(write) == 0) {
-            break;
-        }
-        write += mChannels;
+    GenerateOutputFrames(requestedFrames);
+
+    const size_t producedFrames = std::min(requestedFrames, FramesInOutput());
+    for (size_t i = 0; i < producedFrames * static_cast<size_t>(mChannels); i++) {
+        outSamples[i] = mOutputFifo.front();
+        mOutputFifo.pop_front();
     }
 
     mStats.outputFramesPulled += producedFrames;
@@ -80,10 +77,190 @@ const GameSpeedTimeStretchStats& GameSpeedTimeStretch::GetStats() const {
     return mStats;
 }
 
+int16_t GameSpeedTimeStretch::FloatToS16(float value) {
+    const float clamped = std::clamp(value, -32768.0f, 32767.0f);
+    return static_cast<int16_t>(std::lround(clamped));
+}
+
+void GameSpeedTimeStretch::RecomputeParameters() {
+    mWindowFrames = std::max<int32_t>(64, mSampleRate * 20 / 1000);
+    if (mWindowFrames % 2 != 0) {
+        mWindowFrames += 1;
+    }
+
+    mOverlapFrames = mWindowFrames / 2;
+    mHopOutFrames = mWindowFrames - mOverlapFrames;
+    mSeekFrames = std::max<int32_t>(mSampleRate * 30 / 1000, mOverlapFrames);
+}
+
+void GameSpeedTimeStretch::ResetSynthesisState() {
+    mHasPrevOverlap = false;
+    mAnalysisPosFrames = 0;
+    mPrevOverlap.assign(static_cast<size_t>(mOverlapFrames) * static_cast<size_t>(mChannels), 0.0f);
+}
+
+void GameSpeedTimeStretch::GenerateOutputFrames(size_t minFrames) {
+    if (mSpeed > 1.01f) {
+        GenerateWsolaOutputFrames(minFrames);
+    } else {
+        GenerateDirectOutputFrames(minFrames);
+    }
+}
+
+void GameSpeedTimeStretch::GenerateDirectOutputFrames(size_t minFrames) {
+    ResetSynthesisState();
+
+    while (FramesInOutput() < minFrames && FramesInInput() > 0) {
+        const size_t framesToMove = std::min(minFrames - FramesInOutput(), FramesInInput());
+        const size_t samplesToMove = framesToMove * static_cast<size_t>(mChannels);
+
+        for (size_t i = 0; i < samplesToMove; i++) {
+            mOutputFifo.push_back(mInputFifo.front());
+            mInputFifo.pop_front();
+        }
+    }
+}
+
+void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
+    while (FramesInOutput() < minFrames) {
+        const size_t inputFrames = FramesInInput();
+        if (!mHasPrevOverlap) {
+            if (inputFrames < static_cast<size_t>(mWindowFrames)) {
+                return;
+            }
+
+            AppendRawHop(0);
+            CaptureOverlap(static_cast<size_t>(mHopOutFrames));
+            mHasPrevOverlap = true;
+            mAnalysisPosFrames = HopInFrames();
+            DiscardConsumedInput();
+            continue;
+        }
+
+        if (inputFrames < static_cast<size_t>(mWindowFrames)) {
+            return;
+        }
+
+        const size_t maxStart = inputFrames - static_cast<size_t>(mWindowFrames);
+        if (maxStart == 0 && mAnalysisPosFrames > 0) {
+            return;
+        }
+
+        size_t searchStart = 0;
+        if (mAnalysisPosFrames > static_cast<size_t>(mSeekFrames / 2)) {
+            searchStart = mAnalysisPosFrames - static_cast<size_t>(mSeekFrames / 2);
+        }
+        searchStart = std::min(searchStart, maxStart);
+
+        const size_t searchEnd = std::min(maxStart, mAnalysisPosFrames + static_cast<size_t>(mSeekFrames / 2));
+
+        size_t bestStart = searchStart;
+        float bestScore = CorrelationScore(searchStart);
+        for (size_t candidate = searchStart + 1; candidate <= searchEnd; candidate++) {
+            const float score = CorrelationScore(candidate);
+            if (score > bestScore) {
+                bestScore = score;
+                bestStart = candidate;
+            }
+        }
+
+        AppendBlendedHop(bestStart);
+        CaptureOverlap(bestStart + static_cast<size_t>(mHopOutFrames));
+
+        mAnalysisPosFrames = bestStart + HopInFrames();
+        DiscardConsumedInput();
+    }
+}
+
+size_t GameSpeedTimeStretch::FramesInInput() const {
+    return mInputFifo.size() / static_cast<size_t>(mChannels);
+}
+
+size_t GameSpeedTimeStretch::FramesInOutput() const {
+    return mOutputFifo.size() / static_cast<size_t>(mChannels);
+}
+
+size_t GameSpeedTimeStretch::HopInFrames() const {
+    return std::max<size_t>(1, static_cast<size_t>(std::lround(mHopOutFrames * mSpeed)));
+}
+
+int16_t GameSpeedTimeStretch::ReadSample(size_t frame, size_t channel) const {
+    return mInputFifo[frame * static_cast<size_t>(mChannels) + channel];
+}
+
+float GameSpeedTimeStretch::CorrelationScore(size_t candidateStartFrame) const {
+    float score = 0.0f;
+    for (int32_t i = 0; i < mOverlapFrames; i++) {
+        const size_t frame = candidateStartFrame + static_cast<size_t>(i);
+        const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
+
+        for (int32_t c = 0; c < mChannels; c++) {
+            score += mPrevOverlap[overlapBase + static_cast<size_t>(c)] * ReadSample(frame, static_cast<size_t>(c));
+        }
+    }
+
+    return score;
+}
+
+void GameSpeedTimeStretch::AppendRawHop(size_t segmentStartFrame) {
+    for (int32_t i = 0; i < mHopOutFrames; i++) {
+        const size_t frame = segmentStartFrame + static_cast<size_t>(i);
+        for (int32_t c = 0; c < mChannels; c++) {
+            mOutputFifo.push_back(ReadSample(frame, static_cast<size_t>(c)));
+        }
+    }
+}
+
+void GameSpeedTimeStretch::AppendBlendedHop(size_t segmentStartFrame) {
+    for (int32_t i = 0; i < mHopOutFrames; i++) {
+        const float alpha = static_cast<float>(i + 1) / static_cast<float>(mHopOutFrames + 1);
+        const float beta = 1.0f - alpha;
+        const size_t frame = segmentStartFrame + static_cast<size_t>(i);
+        const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
+
+        for (int32_t c = 0; c < mChannels; c++) {
+            const float previous = mPrevOverlap[overlapBase + static_cast<size_t>(c)];
+            const float current = static_cast<float>(ReadSample(frame, static_cast<size_t>(c)));
+            mOutputFifo.push_back(FloatToS16(previous * beta + current * alpha));
+        }
+    }
+}
+
+void GameSpeedTimeStretch::CaptureOverlap(size_t overlapStartFrame) {
+    for (int32_t i = 0; i < mOverlapFrames; i++) {
+        const size_t frame = overlapStartFrame + static_cast<size_t>(i);
+        const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
+
+        for (int32_t c = 0; c < mChannels; c++) {
+            mPrevOverlap[overlapBase + static_cast<size_t>(c)] =
+                static_cast<float>(ReadSample(frame, static_cast<size_t>(c)));
+        }
+    }
+}
+
+void GameSpeedTimeStretch::DiscardConsumedInput() {
+    const size_t keepFrames = static_cast<size_t>(mSeekFrames + mWindowFrames);
+    if (mAnalysisPosFrames <= keepFrames) {
+        return;
+    }
+
+    const size_t discardFrames = mAnalysisPosFrames - keepFrames;
+    const size_t discardSamples = discardFrames * static_cast<size_t>(mChannels);
+
+    for (size_t i = 0; i < discardSamples; i++) {
+        if (mInputFifo.empty()) {
+            break;
+        }
+        mInputFifo.pop_front();
+    }
+
+    mAnalysisPosFrames -= discardFrames;
+}
+
 bool GameSpeedTimeStretch_SelfCheck() {
     GameSpeedTimeStretch stretch;
     stretch.Configure(32000, 2);
-    stretch.SetSpeed(2.0f);
+    stretch.SetSpeed(1.0f);
 
     int16_t input[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
     stretch.PushInterleaved(input, 4);

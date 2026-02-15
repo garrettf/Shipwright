@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <vector>
 
 namespace SOH {
 
@@ -25,12 +26,40 @@ class GameSpeedTimeStretch {
     const GameSpeedTimeStretchStats& GetStats() const;
 
   private:
-    size_t PopFrame(int16_t* outSamples);
+    static int16_t FloatToS16(float value);
+
+    void RecomputeParameters();
+    void ResetSynthesisState();
+    void GenerateOutputFrames(size_t minFrames);
+    void GenerateDirectOutputFrames(size_t minFrames);
+    void GenerateWsolaOutputFrames(size_t minFrames);
+
+    size_t FramesInInput() const;
+    size_t FramesInOutput() const;
+    size_t HopInFrames() const;
+
+    int16_t ReadSample(size_t frame, size_t channel) const;
+    float CorrelationScore(size_t candidateStartFrame) const;
+    void AppendRawHop(size_t segmentStartFrame);
+    void AppendBlendedHop(size_t segmentStartFrame);
+    void CaptureOverlap(size_t overlapStartFrame);
+    void DiscardConsumedInput();
 
     int32_t mSampleRate = 32000;
     int32_t mChannels = 2;
     float mSpeed = 1.0f;
+
+    int32_t mWindowFrames = 640;
+    int32_t mOverlapFrames = 320;
+    int32_t mHopOutFrames = 320;
+    int32_t mSeekFrames = 960;
+
     std::deque<int16_t> mInputFifo;
+    std::deque<int16_t> mOutputFifo;
+    std::vector<float> mPrevOverlap;
+    bool mHasPrevOverlap = false;
+    size_t mAnalysisPosFrames = 0;
+
     GameSpeedTimeStretchStats mStats;
 };
 
