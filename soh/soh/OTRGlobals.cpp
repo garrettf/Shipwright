@@ -1776,8 +1776,15 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
     }
 
     if (simStepsThisHostFrame > 1) {
-        mtx_replacements.clear();
-        mtx_replacements.emplace_back();
+        // Keep the same number of render submissions for pacing, but force each
+        // interpolation pass to use the final matrix set from the latest sim step.
+        if (mtx_replacements.empty()) {
+            mtx_replacements.emplace_back();
+        } else {
+            for (auto& replacement : mtx_replacements) {
+                replacement.clear();
+            }
+        }
     }
 
     // When the gfx debugger is active, only run with the final mtx
