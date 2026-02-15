@@ -53,6 +53,12 @@ static const std::map<int32_t, const char*> notificationPosition = {
     { 0, "Top Left" }, { 1, "Top Right" }, { 2, "Bottom Left" }, { 3, "Bottom Right" }, { 4, "Hidden" },
 };
 
+static const std::map<int32_t, const char*> gameSpeedAudioModeMap = {
+    { GAME_SPEED_AUDIO_MODE_MUTE, "Mute (Fastest)" },
+    { GAME_SPEED_AUDIO_MODE_CHIPMUNK, "Chipmunk Pitch" },
+    { GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE, "Pitch Preserve (Experimental)" },
+};
+
 static const std::map<int32_t, const char*> bootSequenceLabels = {
     { BOOTSEQUENCE_DEFAULT, "Default" },        { BOOTSEQUENCE_AUTHENTIC, "Authentic" },
     { BOOTSEQUENCE_FILESELECT, "File Select" }, { BOOTSEQUENCE_DEBUGWARPSCREEN, "Debug Warp Screen" },
@@ -393,12 +399,31 @@ void SohMenu::AddMenuSettings() {
                      .DefaultValue(1.0f)
                      .ShowButtons(true)
                      .Format("%.2f"));
-    AddWidget(path, "Mute audio while fast-forwarding", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_SETTING("GameSpeed.MuteAudioWhenFast"))
+    AddWidget(path, "Fast-Forward Audio Mode", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("GameSpeed.AudioMode"))
         .RaceDisable(false)
-        .Options(CheckboxOptions()
-                     .Tooltip("Mutes audio while game speed is above 1.00x.")
-                     .DefaultValue(true));
+        .Options(ComboboxOptions()
+                     .Tooltip("Sets how audio behaves above 1.00x game speed.\n\n"
+                              "Mute: silence while fast-forwarding.\n"
+                              "Chipmunk Pitch: faster playback with higher pitch.\n"
+                              "Pitch Preserve: keep pitch while increasing tempo (in progress).")
+                     .ComboMap(gameSpeedAudioModeMap)
+                     .DefaultIndex(GAME_SPEED_AUDIO_MODE_MUTE));
+    AddWidget(path, "Max Pitch Preserve Speed: %.2fx", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_SETTING("GameSpeed.AudioMaxPitchPreserve"))
+        .RaceDisable(false)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Maximum game-speed multiplier where pitch-preserving mode is allowed.\n"
+                              "Above this value, audio falls back to the configured fast mode policy.")
+                     .Min(1.0f)
+                     .Max(8.0f)
+                     .DefaultValue(4.0f)
+                     .ShowButtons(true)
+                     .Format("%.2f"));
+    AddWidget(path, "Debug Game-Speed Audio Metrics", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("GameSpeed.AudioDebug"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip("Logs game-speed audio counters once per second."));
     AddWidget(path, "Match Refresh Rate", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("MatchRefreshRate"))
         .RaceDisable(false)

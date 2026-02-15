@@ -5,6 +5,9 @@
 
 #define BTN_CUSTOM_MODIFIER1 0x0040
 #define BTN_CUSTOM_MODIFIER2 0x0080
+#define GAME_SPEED_AUDIO_MODE_MUTE 0
+#define GAME_SPEED_AUDIO_MODE_CHIPMUNK 1
+#define GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE 2
 
 #define BTN_CUSTOM_OCARINA_NOTE_D4 ((CONTROLLERBUTTONS_T)0x00010000)
 #define BTN_CUSTOM_OCARINA_NOTE_F4 ((CONTROLLERBUTTONS_T)0x00020000)
@@ -104,6 +107,9 @@ int OTRGameSpeed_IsEnabled(void);
 int OTRGameSpeed_ShouldUseModifiers(void);
 int OTRGameSpeed_IsToggleMode(void);
 int OTRGameSpeed_MuteAudioWhenFast(void);
+int OTRGameSpeed_GetAudioMode(void);
+float OTRGameSpeed_GetAudioMaxPitchPreserve(void);
+int OTRGameSpeed_IsAudioDebugEnabled(void);
 float OTRGameSpeed_GetEffectiveForInput(uint16_t curButtons);
 void OTRGameSpeed_SetCurrent(float speed);
 float OTRGameSpeed_GetCurrent(void);

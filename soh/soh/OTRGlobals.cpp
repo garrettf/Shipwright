@@ -138,6 +138,9 @@ Sail* Sail::Instance;
 Anchor* Anchor::Instance;
 
 static std::atomic<float> sCurrentGameSpeed = 1.0f;
+static std::atomic<uint64_t> sAudioDebugInputSamples = 0;
+static std::atomic<uint64_t> sAudioDebugOutputSamples = 0;
+static std::atomic<uint64_t> sAudioDebugMutedBlocks = 0;
 
 extern "C" char** cameraStrings;
 
@@ -1010,7 +1013,11 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len);
 extern "C" int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 extern "C" int OTRGameSpeed_MuteAudioWhenFast(void);
+extern "C" int OTRGameSpeed_GetAudioMode(void);
+extern "C" int OTRGameSpeed_IsAudioDebugEnabled(void);
 extern "C" float OTRGameSpeed_GetCurrent(void);
+extern "C" uint64_t GetPerfCounter(void);
+extern "C" uint64_t GetFrequency(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
 void OTRAudio_Thread() {
@@ -1035,9 +1042,12 @@ void OTRAudio_Thread() {
 #define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
 #define NUM_AUDIO_CHANNELS 2
 
-        const bool muteFastAudio = OTRGameSpeed_MuteAudioWhenFast() && OTRGameSpeed_GetCurrent() > 1.0f;
+        const int audioMode = OTRGameSpeed_GetAudioMode();
+        const float gameSpeed = OTRGameSpeed_GetCurrent();
+        const bool muteFastAudio = audioMode == GAME_SPEED_AUDIO_MODE_MUTE && gameSpeed > 1.0f;
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
+        const uint64_t frameSamples = (uint64_t)num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
 
         // 3 is the maximum authentic frame divisor.
         s16 audio_buffer[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
@@ -1048,10 +1058,28 @@ void OTRAudio_Thread() {
 
         if (muteFastAudio) {
             std::fill_n(audio_buffer, num_audio_samples * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE, 0);
+            sAudioDebugMutedBlocks.fetch_add(1, std::memory_order_relaxed);
         }
+
+        sAudioDebugInputSamples.fetch_add(frameSamples, std::memory_order_relaxed);
+        sAudioDebugOutputSamples.fetch_add(frameSamples, std::memory_order_relaxed);
 
         AudioPlayer_Play((u8*)audio_buffer,
                          num_audio_samples * (sizeof(int16_t) * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE));
+
+        if (OTRGameSpeed_IsAudioDebugEnabled()) {
+            static uint64_t lastAudioDebugLogTime = 0;
+            const uint64_t now = GetPerfCounter();
+            const uint64_t freq = GetFrequency();
+
+            if (lastAudioDebugLogTime == 0 || now - lastAudioDebugLogTime >= freq) {
+                lastAudioDebugLogTime = now;
+                SPDLOG_INFO("[GameSpeedAudio] mode={} speed={:.2f} in={} out={} muted={}", audioMode, gameSpeed,
+                            sAudioDebugInputSamples.load(std::memory_order_relaxed),
+                            sAudioDebugOutputSamples.load(std::memory_order_relaxed),
+                            sAudioDebugMutedBlocks.load(std::memory_order_relaxed));
+            }
+        }
 
         audio.processing = false;
         audio.cv_from_thread.notify_one();
@@ -1843,6 +1871,19 @@ extern "C" int OTRGameSpeed_IsToggleMode(void) {
 
 extern "C" int OTRGameSpeed_MuteAudioWhenFast(void) {
     return CVarGetInteger(CVAR_SETTING("GameSpeed.MuteAudioWhenFast"), 1);
+}
+
+extern "C" int OTRGameSpeed_GetAudioMode(void) {
+    const int legacyMuteAudio = OTRGameSpeed_MuteAudioWhenFast() ? GAME_SPEED_AUDIO_MODE_MUTE : GAME_SPEED_AUDIO_MODE_CHIPMUNK;
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.AudioMode"), legacyMuteAudio);
+}
+
+extern "C" float OTRGameSpeed_GetAudioMaxPitchPreserve(void) {
+    return ClampGameSpeedSetting(CVarGetFloat(CVAR_SETTING("GameSpeed.AudioMaxPitchPreserve"), 4.0f), 4.0f);
+}
+
+extern "C" int OTRGameSpeed_IsAudioDebugEnabled(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.AudioDebug"), 0);
 }
 
 extern "C" float OTRGameSpeed_GetEffectiveForInput(uint16_t curButtons) {
