@@ -520,10 +520,7 @@ static void RunFrame() {
 
             gameSpeedAccumulator += gameSpeed;
             int simSteps = (int)gameSpeedAccumulator;
-            if (simSteps < 1) {
-                simSteps = 1;
-                gameSpeedAccumulator = 0.0f;
-            } else {
+            if (simSteps > 0) {
                 gameSpeedAccumulator -= simSteps;
             }
 
