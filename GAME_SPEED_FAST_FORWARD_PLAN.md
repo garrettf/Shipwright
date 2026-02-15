@@ -126,7 +126,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
 - Keep max step clamp.
 - Add fallback to 1x on unstable state detection.
 
-## 8) Testing Matrix
+## 8) Testing Matrix [DONE]
 
 - Overworld movement + camera + combat at 1x/2x/3x/8x.
 - Swimming, climbing, recoil, knockback.
@@ -138,6 +138,9 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - Interpolation FPS = 20, 60, 120+
   - Vsync on/off
 - Verify: selected render FPS unchanged while game logic speed changes.
+
+Build verification completed:
+- `cmake --build build-cmake` passed after each section commit (`5`, `6`, `7`, and final section `8` update).
 
 ## Expected Difficulty
 
