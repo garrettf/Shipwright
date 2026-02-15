@@ -346,6 +346,8 @@ void Player_Action_CsAction(Player* this, PlayState* play);
 #pragma region[SoH]
 u8 gWalkSpeedToggle1;
 u8 gWalkSpeedToggle2;
+u8 gGameSpeedToggle1;
+u8 gGameSpeedToggle2;
 
 s32 spawn_boomerang_ivan(EnPartner* this, PlayState* play) {
     if (!CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0)) {
@@ -12327,6 +12329,20 @@ void Player_Update(Actor* thisx, PlayState* play) {
             if (mod2Mask != 0 && CHECK_BTN_ALL(sControlInput->cur.button, mod2Mask) &&
                 CHECK_BTN_ANY(sControlInput->press.button, mod2Mask)) {
                 gWalkSpeedToggle2 = !gWalkSpeedToggle2;
+            }
+        }
+        if (CVarGetInteger(CVAR_SETTING("GameSpeed.UseModifiers"), 0) &&
+            CVarGetInteger(CVAR_SETTING("GameSpeed.Toggle"), 0)) {
+            const s32 mod1Mask = CVarGetInteger(CVAR_SETTING("GameSpeed.Mod1Btn"), BTN_CUSTOM_MODIFIER1);
+            const s32 mod2Mask = CVarGetInteger(CVAR_SETTING("GameSpeed.Mod2Btn"), BTN_CUSTOM_MODIFIER2);
+
+            if (mod1Mask != 0 && CHECK_BTN_ALL(sControlInput->cur.button, mod1Mask) &&
+                CHECK_BTN_ANY(sControlInput->press.button, mod1Mask)) {
+                gGameSpeedToggle1 = !gGameSpeedToggle1;
+            }
+            if (mod2Mask != 0 && CHECK_BTN_ALL(sControlInput->cur.button, mod2Mask) &&
+                CHECK_BTN_ANY(sControlInput->press.button, mod2Mask)) {
+                gGameSpeedToggle2 = !gGameSpeedToggle2;
             }
         }
 

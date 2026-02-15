@@ -172,9 +172,11 @@ extern "C"
 	extern s32 gSystemArenaLogSeverity;
 	extern u8 __osPfsInodeCacheBank;
 	extern s32 __osPfsLastChannel;
-	extern u8 gWalkSpeedToggle1;
-	extern u8 gWalkSpeedToggle2;
-	extern f32 iceTrapScale;
+		extern u8 gWalkSpeedToggle1;
+		extern u8 gWalkSpeedToggle2;
+		extern u8 gGameSpeedToggle1;
+		extern u8 gGameSpeedToggle2;
+		extern f32 iceTrapScale;
 	extern f32 triforcePieceScale;
 	extern f32 mysteryItemScale;
 	

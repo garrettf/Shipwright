@@ -62,7 +62,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - `soh/soh/SohGui/SohMenuSettings.cpp`
   - `soh/soh/Enhancements/controls/SohInputEditorWindow.cpp`
 
-## 3) Reuse Existing Modifier Hotkey Path
+## 3) Reuse Existing Modifier Hotkey Path [DONE]
 
 - Extend the existing toggle/hold logic near:
   - `soh/src/overlays/actors/ovl_player_actor/z_player.c:12318`

@@ -104,6 +104,7 @@ int OTRGameSpeed_IsEnabled(void);
 int OTRGameSpeed_ShouldUseModifiers(void);
 int OTRGameSpeed_IsToggleMode(void);
 int OTRGameSpeed_MuteAudioWhenFast(void);
+float OTRGameSpeed_GetEffectiveForInput(uint16_t curButtons);
 void OTRGameSpeed_SetCurrent(float speed);
 float OTRGameSpeed_GetCurrent(void);
 void OTRLogString(const char* src);

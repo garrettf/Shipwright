@@ -1836,6 +1836,33 @@ extern "C" int OTRGameSpeed_MuteAudioWhenFast(void) {
     return CVarGetInteger(CVAR_SETTING("GameSpeed.MuteAudioWhenFast"), 1);
 }
 
+extern "C" float OTRGameSpeed_GetEffectiveForInput(uint16_t curButtons) {
+    float speed = OTRGameSpeed_IsEnabled() ? OTRGameSpeed_GetBaseSetting() : 1.0f;
+
+    if (!OTRGameSpeed_IsEnabled() || !OTRGameSpeed_ShouldUseModifiers()) {
+        return speed;
+    }
+
+    if (OTRGameSpeed_IsToggleMode()) {
+        if (gGameSpeedToggle1) {
+            speed = OTRGameSpeed_GetModifier1Setting();
+        } else if (gGameSpeedToggle2) {
+            speed = OTRGameSpeed_GetModifier2Setting();
+        }
+    } else {
+        const int32_t mod1Mask = CVarGetInteger(CVAR_SETTING("GameSpeed.Mod1Btn"), BTN_CUSTOM_MODIFIER1);
+        const int32_t mod2Mask = CVarGetInteger(CVAR_SETTING("GameSpeed.Mod2Btn"), BTN_CUSTOM_MODIFIER2);
+
+        if (mod1Mask != 0 && CHECK_BTN_ALL(curButtons, mod1Mask)) {
+            speed = OTRGameSpeed_GetModifier1Setting();
+        } else if (mod2Mask != 0 && CHECK_BTN_ALL(curButtons, mod2Mask)) {
+            speed = OTRGameSpeed_GetModifier2Setting();
+        }
+    }
+
+    return ClampGameSpeedSetting(speed, 1.0f);
+}
+
 extern "C" void OTRGameSpeed_SetCurrent(float speed) {
     sCurrentGameSpeed = ClampGameSpeedSetting(speed, 1.0f);
 }
