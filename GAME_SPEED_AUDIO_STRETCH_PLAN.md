@@ -1,140 +1,118 @@
-# Fast-Forward Audio Options (Pitch-Preserving)
+# Fast-Forward Audio Plan (Pitch-Preserving)
 
-## Context
+## Decision
 
-Current pipeline:
-- audio device initialized at `32,000 Hz`, sample length `1024`, desired buffered `1680` (`soh/soh/OTRGlobals.cpp`)
-- game audio mixed in `OTRAudio_Thread()` via `AudioMgr_CreateNextAudioBuffer(...)`
-- output pushed through `AudioPlayer_Play(...)`
-- current fast-forward behavior: optional mute when `gameSpeed > 1.0`
+Implement an **in-tree WSOLA time-stretcher**, inspired by Chromium's `AudioRendererAlgorithm` structure.
 
-Target:
-- game speed `2x-8x`
-- audio follows tempo (faster timeline)
-- original pitch retained
-- real-time safe on desktop + lower-end targets
+Why:
+- best fit for this repo’s constraints
+- no external licensing baggage
+- deterministic performance and full control over tradeoffs
+- proven architecture reference available from Chromium
 
-## Options Compared
+## Decision Notes
 
-## 1) Keep Current Mute/Chipmunk Path
+Rejected for first pass:
+- SoundTouch: mature, but LGPL dependency cost not worth it here
+- Rubber Band: quality is strong, licensing/integration cost too high for this branch
+- Signalsmith Stretch: excellent library, but recommended operating range does not match `2x-8x`
+- Sonic: practical for voice, weaker fit for mixed BGM + SFX
 
-Pros:
-- trivial
-- no risk
+Important realism check:
+- pitch-preserving `8x` will never sound pristine
+- plan includes quality guardrails and explicit fallback policy
 
-Cons:
-- does not meet requirement
-- poor UX
+## Repo Constraints We Must Respect
 
-Verdict:
-- reject
+- audio device: `32,000 Hz`, stereo output path in SoH thread
+- current audio chunking: ~`528/560` samples per internal frame, typically `R_UPDATE_RATE` grouped
+- game-speed can change every frame
+- render FPS must remain independent
 
-## 2) In-Tree WSOLA Implementation (Custom)
+## Implementation Plan
 
-Pros:
-- no third-party licensing friction
-- algorithm directly aligned with requirement (time-scale modification with pitch retention)
-- controllable CPU/latency tradeoffs
+## 1) Audio Speed Controls + Debug Telemetry
 
-Cons:
-- moderate implementation complexity
-- tuning required (window/seek overlap) for music + SFX mix
-- quality drops at extreme factors (especially near `8x`)
+- add CVars:
+  - `gSettings.GameSpeed.AudioMode` (`Mute`, `Chipmunk`, `PitchPreserve`)
+  - `gSettings.GameSpeed.AudioMaxPitchPreserve` (default `4.0`)
+  - `gSettings.GameSpeed.AudioDebug` (off by default)
+- keep current mute behavior as fallback path
+- add tiny debug counters (source samples in, stretched samples out, underflows)
 
-Risk:
-- medium
+Commit goal:
+- no behavior change when `AudioMode != PitchPreserve`
 
-## 3) SoundTouch (WSOLA-family, external)
+## 2) Add Time-Stretch Module (Scaffold)
 
-Pros:
-- mature, practical real-time time-stretch/pitch API
-- known tempo/pitch/rate separation
-- explicitly optimized for high speedups (quick mode)
+- create `soh/soh/audio/GameSpeedTimeStretch.h/.cpp`
+- class responsibilities:
+  - hold input FIFO (interleaved `s16` stereo)
+  - generate fixed-length output blocks
+  - reset cleanly on mode changes / seek / load-state
+- add unit-ish self-check helper (compiled in dev builds) for invariants
 
-Cons:
-- additional dependency + integration surface
-- LGPL licensing obligations
-- quality/latency tuning still needed
+Commit goal:
+- compile-time integration only, no runtime routing yet
 
-Risk:
-- medium
+## 3) Route Audio Through Module in OTRAudio_Thread
 
-## 4) Rubber Band Library (phase-vocoder/hybrid, external)
+- in `PitchPreserve` mode:
+  - accumulate *source* audio proportional to game speed
+  - request exactly target output length for device queue
+- preserve old direct path for `Mute`/`Chipmunk`
+- keep locking behavior unchanged
 
-Pros:
-- high quality for music
-- robust real-time mode + extensive tuning
+Commit goal:
+- end-to-end data path active, temporary naive copier inside module
 
-Cons:
-- heavier integration + more CPU than minimal WSOLA paths
-- licensing model not ideal for this repo workflow (GPL/commercial)
+## 4) Implement WSOLA Core (Chromium-Inspired)
 
-Risk:
-- medium-high (integration + licensing)
+- implement overlap/add with seek:
+  - OLA window ~`20 ms`
+  - search interval ~`30 ms`
+  - cross-correlation seek for best overlap
+- optimize near-`1.0x` with direct copy shortcut
+- support dynamic speed updates without hard discontinuities
 
-## 5) Signalsmith Stretch (header-only, MIT)
+Commit goal:
+- audible pitch-preserving speed-up at `2x-4x`
 
-Pros:
-- permissive license
-- small integration surface
+## 5) High-Speed Policy + Guardrails
 
-Cons:
-- recommended factor range is near `0.75x-1.5x`; far outside target for `2x-8x`
-- algorithmic fit/risk for extreme speedups uncertain
+- for speed `> AudioMaxPitchPreserve`:
+  - default: soft fallback to `Mute` (or optional chipmunk, CVar-controlled)
+- add underrun protection:
+  - if stretcher lacks source, output short zero-crossfade-safe silence
+- clear buffers on save/load and hard state changes
 
-Risk:
-- medium-high
+Commit goal:
+- stable behavior through aggressive speed toggles
 
-## 6) Sonic Library (time-domain, speech-optimized)
+## 6) UI + Settings Wiring
 
-Pros:
-- permissive license
-- real-time friendly
+- add settings rows in `SohMenuSettings.cpp`
+- wording explicit about quality limits at high multipliers
+- keep defaults safe (`Mute` or `PitchPreserve<=4x`, per preference chosen during testing)
 
-Cons:
-- tuned more for voice/speech than full game music+SFX mix
-- likely noticeable artifacts for BGM at high factors
+Commit goal:
+- user-facing control complete
 
-Risk:
-- medium
+## 7) Validation Matrix
 
-## 7) Chromium-Inspired In-Tree WSOLA (Reference Architecture)
+- verify at `1x/2x/3x/4x/8x`
+- scenes: overworld, combat, menu, file select, transitions
+- check:
+  - no render-FPS coupling regressions
+  - no audio queue runaway/underrun spam
+  - acceptable artifact profile through `4x`
 
-Pros:
-- proven production design
-- BSD-licensed reference implementation and tunings
-- directly relevant to real-time media playback
-
-Cons:
-- Chromium implementation is tightly coupled to its media abstractions
-- requires adaptation to SoH’s simpler audio thread and integer PCM path
-
-Notable Chromium design points to reuse:
-- `20 ms` OLA window + `30 ms` search interval
-- queue-based buffering with explicit capacity growth/underflow handling
-- quality guardrail: mute at extreme playback rates
-- avoids expensive path near `1.0x` by shortcutting copies
-
-Risk:
-- medium
-
-## Practical Read
-
-Most realistic paths:
-- custom in-tree WSOLA
-- SoundTouch
-
-Best quality path ignoring licensing complexity:
-- Rubber Band
-
-Best fit for this codebase constraints (control + no new legal baggage):
-- custom in-tree WSOLA
+Commit goal:
+- document final known limits in this file
 
 ## Sources
 
-- WSOLA reference (Verhelst/ROELANDS): [ISCA entry](https://www.isca-archive.org/eurospeech_1993/verhelst93_eurospeech.html)
-- Chromium WSOLA implementation reference: [audio_renderer_algorithm.h](https://chromium.googlesource.com/chromium/src/+/HEAD/media/filters/audio_renderer_algorithm.h), [audio_renderer_algorithm.cc](https://chromium.googlesource.com/chromium/src/+/HEAD/media/filters/audio_renderer_algorithm.cc)
-- SoundTouch docs/FAQ: [README](https://codeberg.org/soundtouch/soundtouch/src/branch/master/README.md), [FAQ](https://www.surina.net/soundtouch/faq.html)
-- Rubber Band integration/licensing: [integration notes](https://breakfastquay.com/rubberband/integration.html), [license](https://breakfastquay.com/rubberband/licensing.html)
-- Signalsmith Stretch: [README](https://github.com/Signalsmith-Audio/signalsmith-stretch/blob/main/README.md)
-- Sonic: [README](https://github.com/waywardgeek/sonic)
+- WSOLA reference: [Verhelst/ROELANDS](https://www.isca-archive.org/eurospeech_1993/verhelst93_eurospeech.html)
+- Chromium implementation references:
+  - [audio_renderer_algorithm.h](https://chromium.googlesource.com/chromium/src/+/HEAD/media/filters/audio_renderer_algorithm.h)
+  - [audio_renderer_algorithm.cc](https://chromium.googlesource.com/chromium/src/+/HEAD/media/filters/audio_renderer_algorithm.cc)
