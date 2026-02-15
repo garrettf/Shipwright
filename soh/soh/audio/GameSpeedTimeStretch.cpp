@@ -39,8 +39,9 @@ void GameSpeedTimeStretch::SetSpeed(float speed) {
 
     const bool nowWsola = mSpeed > 1.01f;
     if (wasWsola != nowWsola) {
-        mOutputFifo.clear();
-        ResetSynthesisState();
+        // Switching between WSOLA and direct-copy should not keep stale buffered audio,
+        // otherwise latency and timeline discontinuities can accumulate.
+        Reset();
     }
 }
 
@@ -168,17 +169,9 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
         }
 
         const size_t expectedStart = std::min(mAnalysisPosFrames, maxStart);
-        size_t searchStart = 0;
-        if (expectedStart > static_cast<size_t>(mSeekFrames / 2)) {
-            searchStart = expectedStart - static_cast<size_t>(mSeekFrames / 2);
-        }
-        searchStart = std::min(searchStart, maxStart);
-
-        // Keep WSOLA progressing forward to avoid tempo droop and attack retrigger loops.
-        const size_t minForwardStart = expectedStart > hopInFrames ? expectedStart - hopInFrames : 0;
-        searchStart = std::max(searchStart, minForwardStart);
-        searchStart = std::min(searchStart, maxStart);
-
+        // Keep candidate search near expected timeline to avoid drifting backward and slowing tempo.
+        const size_t maxBacktrack = static_cast<size_t>(std::max(1, mOverlapFrames / 4));
+        const size_t searchStart = expectedStart > maxBacktrack ? (expectedStart - maxBacktrack) : 0;
         const size_t searchEnd = std::max(searchStart, std::min(maxStart, expectedStart + static_cast<size_t>(mSeekFrames / 2)));
 
         size_t bestStart = searchStart;
@@ -194,12 +187,10 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
         AppendBlendedHop(bestStart);
         CaptureOverlap(bestStart + static_cast<size_t>(mHopOutFrames));
 
-        const size_t previousAnalysisPos = mAnalysisPosFrames;
-        mAnalysisPosFrames = bestStart + hopInFrames;
-        const size_t analysisAdvance =
-            mAnalysisPosFrames >= previousAnalysisPos ? (mAnalysisPosFrames - previousAnalysisPos) : 0;
+        // Advance analysis cursor by requested hop-in amount, independent of local best-match location.
+        mAnalysisPosFrames += hopInFrames;
         mStats.wsolaHops++;
-        mStats.wsolaInputAdvanceFrames += analysisAdvance;
+        mStats.wsolaInputAdvanceFrames += hopInFrames;
         mStats.wsolaOutputFrames += static_cast<size_t>(mHopOutFrames);
         DiscardConsumedInput();
     }
