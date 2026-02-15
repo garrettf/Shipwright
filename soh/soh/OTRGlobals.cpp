@@ -1831,8 +1831,6 @@ void RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>
 
 // C->C++ Bridge
 extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFrame) {
-    (void)simStepsThisHostFrame;
-
     {
         std::unique_lock<std::mutex> Lock(audio.mutex);
         audio.processing = true;
@@ -1861,7 +1859,9 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
 
     while (time + original_fps <= next_original_frame) {
         time += original_fps;
-        if (time != next_original_frame) {
+        // If no simulation step ran this host frame (<1.0x game speed), re-render the
+        // last simulated state without interpolation to avoid stale-state rewind/jitter.
+        if (simStepsThisHostFrame > 0 && time != next_original_frame) {
             mtx_replacements.push_back(FrameInterpolation_Interpolate((float)time / next_original_frame));
         } else {
             mtx_replacements.emplace_back();
