@@ -52,7 +52,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - Optional: `gSettings.GameSpeed.MuteAudioWhenFast` (bool)
 - Add migrators only if you rename/replace existing keys later.
 
-## 2) Add UI For Global Game Speed
+## 2) Add UI For Global Game Speed [DONE]
 
 - Add slider in Settings menu (clear wording: affects logic/cutscenes/physics).
 - Add controls in modifier section near existing speed modifiers:

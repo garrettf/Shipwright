@@ -1669,6 +1669,50 @@ void SohInputEditorWindow::DrawLinkTab() {
                                     .DefaultValue(1.0f)
                                     .ShowButtons(true));
                 Ship::GuiWindow::EndGroupPanel(0);
+                CVarCheckbox("Apply modifiers to game speed", CVAR_SETTING("GameSpeed.UseModifiers"),
+                             CheckboxOptions()
+                                 .Color(THEME_COLOR)
+                                 .Tooltip("Use modifier hotkeys to change global game logic speed."));
+                if (CVarGetInteger(CVAR_SETTING("GameSpeed.UseModifiers"), 0)) {
+                    CVarBtnSelector(
+                        "Game Speed Modifier 1 Button Combo", CVAR_SETTING("GameSpeed.Mod1Btn"),
+                        BtnSelectorOptions()
+                            .DefaultValue(BTN_CUSTOM_MODIFIER1)
+                            .Color(THEME_COLOR)
+                            .Tooltip(
+                                "Buttons that activate Game Speed Modifier 1.\n\n"
+                                "If \"Toggle game speed modifier instead of holding\" is off, hold this combo.\n"
+                                "If it is on, tap this combo to toggle it on/off."));
+                    CVarBtnSelector(
+                        "Game Speed Modifier 2 Button Combo", CVAR_SETTING("GameSpeed.Mod2Btn"),
+                        BtnSelectorOptions()
+                            .DefaultValue(BTN_CUSTOM_MODIFIER2)
+                            .Color(THEME_COLOR)
+                            .Tooltip(
+                                "Buttons that activate Game Speed Modifier 2.\n\n"
+                                "If \"Toggle game speed modifier instead of holding\" is off, hold this combo.\n"
+                                "If it is on, tap this combo to toggle it on/off."));
+                    CVarCheckbox("Toggle game speed modifier instead of holding", CVAR_SETTING("GameSpeed.Toggle"),
+                                 CheckboxOptions().Color(THEME_COLOR));
+                    Ship::GuiWindow::BeginGroupPanel("Game Speed Modifier", ImGui::GetContentRegionAvail());
+                    CVarSliderFloat("Game Speed 1: %.2fx", CVAR_SETTING("GameSpeed.Mod1"),
+                                    FloatSliderOptions()
+                                        .Color(THEME_COLOR)
+                                        .Min(0.125f)
+                                        .Max(8.0f)
+                                        .DefaultValue(1.0f)
+                                        .ShowButtons(true)
+                                        .Format("%.2f"));
+                    CVarSliderFloat("Game Speed 2: %.2fx", CVAR_SETTING("GameSpeed.Mod2"),
+                                    FloatSliderOptions()
+                                        .Color(THEME_COLOR)
+                                        .Min(0.125f)
+                                        .Max(8.0f)
+                                        .DefaultValue(1.0f)
+                                        .ShowButtons(true)
+                                        .Format("%.2f"));
+                    Ship::GuiWindow::EndGroupPanel(0);
+                }
                 Ship::GuiWindow::EndGroupPanel(0);
             }
             ImGui::EndDisabled();

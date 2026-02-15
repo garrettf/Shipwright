@@ -376,6 +376,29 @@ void SohMenu::AddMenuSettings() {
                 info.activeDisables.push_back(DISABLE_FOR_MATCH_REFRESH_RATE_ON);
         })
         .Options(IntSliderOptions().Tooltip(tooltip).Min(20).Max(maxFps).DefaultValue(20).Format(fpsFormat));
+    AddWidget(path, "Enable Game Speed Multiplier", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("GameSpeed.Enabled"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Scales gameplay logic speed globally, including physics, cutscenes, and transitions.")
+                     .DefaultValue(false));
+    AddWidget(path, "Game Speed: %.2fx", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_SETTING("GameSpeed.Base"))
+        .RaceDisable(false)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Global gameplay speed multiplier.\n\n"
+                              "1.00x is original speed. Higher values run gameplay faster.")
+                     .Min(1.0f)
+                     .Max(8.0f)
+                     .DefaultValue(1.0f)
+                     .ShowButtons(true)
+                     .Format("%.2f"));
+    AddWidget(path, "Mute audio while fast-forwarding", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("GameSpeed.MuteAudioWhenFast"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Mutes audio while game speed is above 1.00x.")
+                     .DefaultValue(true));
     AddWidget(path, "Match Refresh Rate", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("MatchRefreshRate"))
         .RaceDisable(false)
