@@ -44,6 +44,7 @@
 #include <ship/window/gui/resource/Font.h>
 #include <ship/utils/StringHelper.h>
 #include "Enhancements/custom-message/CustomMessageManager.h"
+#include "audio/GameSpeedTimeStretch.h"
 #include "util.h"
 
 #if not defined(__SWITCH__) && not defined(__WIIU__)
@@ -141,6 +142,7 @@ static std::atomic<float> sCurrentGameSpeed = 1.0f;
 static std::atomic<uint64_t> sAudioDebugInputSamples = 0;
 static std::atomic<uint64_t> sAudioDebugOutputSamples = 0;
 static std::atomic<uint64_t> sAudioDebugMutedBlocks = 0;
+static SOH::GameSpeedTimeStretch sGameSpeedTimeStretch;
 
 extern "C" char** cameraStrings;
 
@@ -1014,6 +1016,7 @@ extern "C" int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 extern "C" int OTRGameSpeed_MuteAudioWhenFast(void);
 extern "C" int OTRGameSpeed_GetAudioMode(void);
+extern "C" float OTRGameSpeed_GetAudioMaxPitchPreserve(void);
 extern "C" int OTRGameSpeed_IsAudioDebugEnabled(void);
 extern "C" float OTRGameSpeed_GetCurrent(void);
 extern "C" uint64_t GetPerfCounter(void);
@@ -1044,28 +1047,66 @@ void OTRAudio_Thread() {
 
         const int audioMode = OTRGameSpeed_GetAudioMode();
         const float gameSpeed = OTRGameSpeed_GetCurrent();
+        const float maxPitchPreserveSpeed = OTRGameSpeed_GetAudioMaxPitchPreserve();
+        const float pitchPreserveSpeed = std::clamp(gameSpeed, 1.0f, maxPitchPreserveSpeed);
         const bool muteFastAudio = audioMode == GAME_SPEED_AUDIO_MODE_MUTE && gameSpeed > 1.0f;
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
-        const uint64_t frameSamples = (uint64_t)num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
+        const size_t outputFrames = (size_t)num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
+        const size_t outputSampleCount = outputFrames * NUM_AUDIO_CHANNELS;
 
-        // 3 is the maximum authentic frame divisor.
-        s16 audio_buffer[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
-        for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
-            AudioMgr_CreateNextAudioBuffer(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
-                                           num_audio_samples);
+        static int sLastAudioMode = GAME_SPEED_AUDIO_MODE_MUTE;
+        static float sPitchPreserveSourceFrameAccumulator = 0.0f;
+
+        if (sLastAudioMode != audioMode) {
+            sGameSpeedTimeStretch.Reset();
+            sPitchPreserveSourceFrameAccumulator = 0.0f;
+            sLastAudioMode = audioMode;
+        }
+
+        std::vector<int16_t> outputBuffer(outputSampleCount, 0);
+        uint64_t inputFramesForDebug = outputFrames;
+
+        if (audioMode == GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE) {
+            sGameSpeedTimeStretch.Configure(32000, NUM_AUDIO_CHANNELS);
+            sGameSpeedTimeStretch.SetSpeed(pitchPreserveSpeed);
+
+            sPitchPreserveSourceFrameAccumulator += (float)AUDIO_FRAMES_PER_UPDATE * pitchPreserveSpeed;
+            int sourceAudioFrames = std::max<int>(1, (int)sPitchPreserveSourceFrameAccumulator);
+            sPitchPreserveSourceFrameAccumulator -= sourceAudioFrames;
+
+            const size_t sourceFrames = (size_t)num_audio_samples * (size_t)sourceAudioFrames;
+            inputFramesForDebug = sourceFrames;
+            const size_t sourceSampleCount = sourceFrames * NUM_AUDIO_CHANNELS;
+            std::vector<int16_t> sourceBuffer(sourceSampleCount, 0);
+
+            for (int i = 0; i < sourceAudioFrames; i++) {
+                AudioMgr_CreateNextAudioBuffer(sourceBuffer.data() + ((size_t)i * num_audio_samples * NUM_AUDIO_CHANNELS),
+                                               num_audio_samples);
+            }
+
+            sGameSpeedTimeStretch.PushInterleaved(sourceBuffer.data(), sourceFrames);
+            sGameSpeedTimeStretch.PullInterleaved(outputBuffer.data(), outputFrames);
+        } else {
+            // 3 is the maximum authentic frame divisor.
+            int16_t sourceBuffer[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
+            for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
+                AudioMgr_CreateNextAudioBuffer(sourceBuffer + ((size_t)i * num_audio_samples * NUM_AUDIO_CHANNELS),
+                                               num_audio_samples);
+            }
+
+            std::copy_n(sourceBuffer, outputSampleCount, outputBuffer.data());
         }
 
         if (muteFastAudio) {
-            std::fill_n(audio_buffer, num_audio_samples * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE, 0);
+            std::fill(outputBuffer.begin(), outputBuffer.end(), 0);
             sAudioDebugMutedBlocks.fetch_add(1, std::memory_order_relaxed);
         }
 
-        sAudioDebugInputSamples.fetch_add(frameSamples, std::memory_order_relaxed);
-        sAudioDebugOutputSamples.fetch_add(frameSamples, std::memory_order_relaxed);
+        sAudioDebugInputSamples.fetch_add(inputFramesForDebug, std::memory_order_relaxed);
+        sAudioDebugOutputSamples.fetch_add(outputFrames, std::memory_order_relaxed);
 
-        AudioPlayer_Play((u8*)audio_buffer,
-                         num_audio_samples * (sizeof(int16_t) * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE));
+        AudioPlayer_Play((u8*)outputBuffer.data(), outputBuffer.size() * sizeof(int16_t));
 
         if (OTRGameSpeed_IsAudioDebugEnabled()) {
             static uint64_t lastAudioDebugLogTime = 0;
