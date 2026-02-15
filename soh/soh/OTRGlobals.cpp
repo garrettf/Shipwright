@@ -1017,6 +1017,7 @@ extern "C" int AudioPlayer_GetDesiredBuffered(void);
 extern "C" int OTRGameSpeed_MuteAudioWhenFast(void);
 extern "C" int OTRGameSpeed_GetAudioMode(void);
 extern "C" float OTRGameSpeed_GetAudioMaxPitchPreserve(void);
+extern "C" int OTRGameSpeed_GetAudioFallbackMode(void);
 extern "C" int OTRGameSpeed_IsAudioDebugEnabled(void);
 extern "C" float OTRGameSpeed_GetCurrent(void);
 extern "C" uint64_t GetPerfCounter(void);
@@ -1049,25 +1050,41 @@ void OTRAudio_Thread() {
         const float gameSpeed = OTRGameSpeed_GetCurrent();
         const float maxPitchPreserveSpeed = OTRGameSpeed_GetAudioMaxPitchPreserve();
         const float pitchPreserveSpeed = std::clamp(gameSpeed, 1.0f, maxPitchPreserveSpeed);
-        const bool muteFastAudio = audioMode == GAME_SPEED_AUDIO_MODE_MUTE && gameSpeed > 1.0f;
+        const int audioFallbackMode = OTRGameSpeed_GetAudioFallbackMode();
+        int effectiveAudioMode = audioMode;
+        if (audioMode == GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE && gameSpeed > maxPitchPreserveSpeed) {
+            effectiveAudioMode = audioFallbackMode == GAME_SPEED_AUDIO_FALLBACK_CHIPMUNK
+                                     ? GAME_SPEED_AUDIO_MODE_CHIPMUNK
+                                     : GAME_SPEED_AUDIO_MODE_MUTE;
+        }
+
+        const bool muteFastAudio = effectiveAudioMode == GAME_SPEED_AUDIO_MODE_MUTE && gameSpeed > 1.0f;
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
         const size_t outputFrames = (size_t)num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
         const size_t outputSampleCount = outputFrames * NUM_AUDIO_CHANNELS;
 
         static int sLastAudioMode = GAME_SPEED_AUDIO_MODE_MUTE;
+        static float sLastPitchPreserveSpeed = 1.0f;
         static float sPitchPreserveSourceFrameAccumulator = 0.0f;
 
-        if (sLastAudioMode != audioMode) {
+        if (sLastAudioMode != effectiveAudioMode) {
             sGameSpeedTimeStretch.Reset();
             sPitchPreserveSourceFrameAccumulator = 0.0f;
-            sLastAudioMode = audioMode;
+            sLastPitchPreserveSpeed = pitchPreserveSpeed;
+            sLastAudioMode = effectiveAudioMode;
         }
 
         std::vector<int16_t> outputBuffer(outputSampleCount, 0);
         uint64_t inputFramesForDebug = outputFrames;
 
-        if (audioMode == GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE) {
+        if (effectiveAudioMode == GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE) {
+            if (fabsf(pitchPreserveSpeed - sLastPitchPreserveSpeed) > 0.75f) {
+                sGameSpeedTimeStretch.Reset();
+                sPitchPreserveSourceFrameAccumulator = 0.0f;
+            }
+            sLastPitchPreserveSpeed = pitchPreserveSpeed;
+
             sGameSpeedTimeStretch.Configure(32000, NUM_AUDIO_CHANNELS);
             sGameSpeedTimeStretch.SetSpeed(pitchPreserveSpeed);
 
@@ -1115,7 +1132,8 @@ void OTRAudio_Thread() {
 
             if (lastAudioDebugLogTime == 0 || now - lastAudioDebugLogTime >= freq) {
                 lastAudioDebugLogTime = now;
-                SPDLOG_INFO("[GameSpeedAudio] mode={} speed={:.2f} in={} out={} muted={}", audioMode, gameSpeed,
+                SPDLOG_INFO("[GameSpeedAudio] mode={} effectiveMode={} speed={:.2f} in={} out={} muted={}", audioMode,
+                            effectiveAudioMode, gameSpeed,
                             sAudioDebugInputSamples.load(std::memory_order_relaxed),
                             sAudioDebugOutputSamples.load(std::memory_order_relaxed),
                             sAudioDebugMutedBlocks.load(std::memory_order_relaxed));
@@ -1921,6 +1939,10 @@ extern "C" int OTRGameSpeed_GetAudioMode(void) {
 
 extern "C" float OTRGameSpeed_GetAudioMaxPitchPreserve(void) {
     return ClampGameSpeedSetting(CVarGetFloat(CVAR_SETTING("GameSpeed.AudioMaxPitchPreserve"), 4.0f), 4.0f);
+}
+
+extern "C" int OTRGameSpeed_GetAudioFallbackMode(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.AudioFallbackMode"), GAME_SPEED_AUDIO_FALLBACK_MUTE);
 }
 
 extern "C" int OTRGameSpeed_IsAudioDebugEnabled(void) {

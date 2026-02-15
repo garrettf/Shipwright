@@ -59,6 +59,11 @@ static const std::map<int32_t, const char*> gameSpeedAudioModeMap = {
     { GAME_SPEED_AUDIO_MODE_PITCH_PRESERVE, "Pitch Preserve (Experimental)" },
 };
 
+static const std::map<int32_t, const char*> gameSpeedAudioFallbackModeMap = {
+    { GAME_SPEED_AUDIO_FALLBACK_MUTE, "Mute" },
+    { GAME_SPEED_AUDIO_FALLBACK_CHIPMUNK, "Chipmunk Pitch" },
+};
+
 static const std::map<int32_t, const char*> bootSequenceLabels = {
     { BOOTSEQUENCE_DEFAULT, "Default" },        { BOOTSEQUENCE_AUTHENTIC, "Authentic" },
     { BOOTSEQUENCE_FILESELECT, "File Select" }, { BOOTSEQUENCE_DEBUGWARPSCREEN, "Debug Warp Screen" },
@@ -420,6 +425,13 @@ void SohMenu::AddMenuSettings() {
                      .DefaultValue(4.0f)
                      .ShowButtons(true)
                      .Format("%.2f"));
+    AddWidget(path, "Pitch Preserve Overflow Policy", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("GameSpeed.AudioFallbackMode"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .Tooltip("Behavior when game speed exceeds Max Pitch Preserve Speed.")
+                     .ComboMap(gameSpeedAudioFallbackModeMap)
+                     .DefaultIndex(GAME_SPEED_AUDIO_FALLBACK_MUTE));
     AddWidget(path, "Debug Game-Speed Audio Metrics", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("GameSpeed.AudioDebug"))
         .RaceDisable(false)
