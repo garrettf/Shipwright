@@ -1842,9 +1842,25 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
     static int last_fps;
     static int last_update_rate;
     static int time;
+    static float slowdownBlendProgress = 1.0f;
     int fps = target_fps;
     int original_fps = 60 / R_UPDATE_RATE;
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
+    const float currentGameSpeed = OTRGameSpeed_GetCurrent();
+    const bool useSlowdownInterpolation = currentGameSpeed < 0.999f;
+    float slowdownBlendStart = 1.0f;
+    float slowdownBlendEnd = 1.0f;
+
+    if (useSlowdownInterpolation) {
+        if (simStepsThisHostFrame > 0) {
+            slowdownBlendProgress = 0.0f;
+        }
+        slowdownBlendStart = slowdownBlendProgress;
+        const float slowBlendStep = std::clamp(currentGameSpeed, 0.001f, 1.0f);
+        slowdownBlendEnd = std::min(1.0f, slowdownBlendStart + slowBlendStep);
+    } else {
+        slowdownBlendProgress = 1.0f;
+    }
 
     if (target_fps == 20 || original_fps > target_fps) {
         fps = original_fps;
@@ -1859,13 +1875,25 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
 
     while (time + original_fps <= next_original_frame) {
         time += original_fps;
-        // If no simulation step ran this host frame (<1.0x game speed), re-render the
-        // last simulated state without interpolation to avoid stale-state rewind/jitter.
-        if (simStepsThisHostFrame > 0 && time != next_original_frame) {
-            mtx_replacements.push_back(FrameInterpolation_Interpolate((float)time / next_original_frame));
+        if (time != next_original_frame) {
+            if (useSlowdownInterpolation) {
+                const float framePhase = (float)time / (float)next_original_frame;
+                const float blendPhase = slowdownBlendStart + ((slowdownBlendEnd - slowdownBlendStart) * framePhase);
+                if (blendPhase < 0.999f) {
+                    mtx_replacements.push_back(FrameInterpolation_Interpolate(blendPhase));
+                } else {
+                    mtx_replacements.emplace_back();
+                }
+            } else {
+                mtx_replacements.push_back(FrameInterpolation_Interpolate((float)time / next_original_frame));
+            }
         } else {
             mtx_replacements.emplace_back();
         }
+    }
+
+    if (useSlowdownInterpolation) {
+        slowdownBlendProgress = slowdownBlendEnd;
     }
 
     time -= fps;
