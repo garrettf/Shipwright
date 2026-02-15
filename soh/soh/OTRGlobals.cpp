@@ -1850,7 +1850,6 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
     const bool useSlowdownInterpolation = currentGameSpeed < 0.999f;
     float slowdownBlendStart = 1.0f;
     float slowdownBlendEnd = 1.0f;
-
     if (useSlowdownInterpolation) {
         if (simStepsThisHostFrame > 0) {
             slowdownBlendProgress = 0.0f;
@@ -1875,18 +1874,17 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFram
 
     while (time + original_fps <= next_original_frame) {
         time += original_fps;
-        if (time != next_original_frame) {
-            if (useSlowdownInterpolation) {
-                const float framePhase = (float)time / (float)next_original_frame;
-                const float blendPhase = slowdownBlendStart + ((slowdownBlendEnd - slowdownBlendStart) * framePhase);
-                if (blendPhase < 0.999f) {
-                    mtx_replacements.push_back(FrameInterpolation_Interpolate(blendPhase));
-                } else {
-                    mtx_replacements.emplace_back();
-                }
+        if (useSlowdownInterpolation) {
+            const float framePhase = (float)time / (float)next_original_frame;
+            const float blendPhase =
+                std::clamp(slowdownBlendStart + ((slowdownBlendEnd - slowdownBlendStart) * framePhase), 0.0f, 1.0f);
+            if (blendPhase < 0.999f) {
+                mtx_replacements.push_back(FrameInterpolation_Interpolate(blendPhase));
             } else {
-                mtx_replacements.push_back(FrameInterpolation_Interpolate((float)time / next_original_frame));
+                mtx_replacements.emplace_back();
             }
+        } else if (time != next_original_frame) {
+            mtx_replacements.push_back(FrameInterpolation_Interpolate((float)time / next_original_frame));
         } else {
             mtx_replacements.emplace_back();
         }
