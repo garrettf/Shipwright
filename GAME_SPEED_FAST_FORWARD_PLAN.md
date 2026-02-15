@@ -85,7 +85,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - `soh/src/code/graph.c`
   - `soh/soh/OTRGlobals.cpp`
 
-## 5) Render Independence
+## 5) Render Independence [DONE]
 
 - Keep **display fps** and **simulation speed** as separate variables.
 - In `soh/soh/OTRGlobals.cpp:1734` onward:

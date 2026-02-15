@@ -272,12 +272,12 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
     Sched_SendEntryMsg(&gSchedContext);
 }
 
-void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
+void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState, bool submitTask, bool requestPadData) {
     u32 problem;
 
     // Skip game frame updates while gfx debugger is active, and execute with the last frame's DL buffer
     if (GfxDebuggerIsDebugging()) {
-        Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer);
+        Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer, 1);
         return;
     }
 
@@ -293,7 +293,9 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     CLOSE_DISPS(gfxCtx);
 
-    GameState_ReqPadData(gameState);
+    if (requestPadData) {
+        GameState_ReqPadData(gameState);
+    }
     GameState_Update(gameState);
 
     OPEN_DISPS(gfxCtx);
@@ -383,7 +385,7 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
         osSyncPrintf(VT_COL(RED, WHITE) "ゼルダ4は死んでしまった(graph_alloc is empty)\n" VT_RST);
     }
 
-    if (!problem) {
+    if (!problem && submitTask) {
         Graph_TaskSet00(gfxCtx);
         gfxCtx->gfxPoolIdx++;
         gfxCtx->fbIdx++;
@@ -438,6 +440,10 @@ static float GetCurrentGameSpeed(void) {
     return OTRGameSpeed_GetEffectiveForInput(gGameState->input[0].cur.button);
 }
 
+static void ClearPressedButtons(GameState* gameState) {
+    gameState->input[0].press.button = 0;
+}
+
 static void RunFrame() {
     u32 size;
     char faultMsg[0x50];
@@ -490,6 +496,7 @@ static void RunFrame() {
             Graph_StartFrame();
 
             PadMgr_ThreadEntry(&gPadMgr);
+            GameState_ReqPadData(gGameState);
 
             float gameSpeed = GetCurrentGameSpeed();
             OTRGameSpeed_SetCurrent(gameSpeed);
@@ -504,7 +511,11 @@ static void RunFrame() {
             }
 
             for (int simStep = 0; simStep < simSteps && GameState_IsRunning(gGameState); simStep++) {
-                Graph_Update(&runFrameContext.gfxCtx, gGameState);
+                if (simStep > 0) {
+                    ClearPressedButtons(gGameState);
+                }
+
+                Graph_Update(&runFrameContext.gfxCtx, gGameState, simStep == (simSteps - 1), false);
             }
             // ticksB = GetPerfCounter();
 
@@ -512,7 +523,7 @@ static void RunFrame() {
                 GfxDebuggerDebugDisplayList(runFrameContext.gfxCtx.workBuffer);
             }
 
-            Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer);
+            Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer, simSteps);
 
             // uint64_t diff = (ticksB - ticksA) / (freq / 1000);
             // printf("Frame simulated in %ims\n", diff);
@@ -530,7 +541,7 @@ static void RunFrame() {
     Graph_Destroy(&runFrameContext.gfxCtx);
     osSyncPrintf("グラフィックスレッド実行終了\n"); // "End of graphic thread execution"
 
-    // Graph_Update(gfxCtxTest, gameStateTest);
+    // Graph_Update(gfxCtxTest, gameStateTest, true, true);
     exit(0);
 }
 

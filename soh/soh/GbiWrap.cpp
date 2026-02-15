@@ -6,7 +6,7 @@ extern "C" {
 void InitOTR(int argc, char* argv[]);
 void Graph_ProcessFrame(void (*run_one_game_iter)(void));
 void Graph_StartFrame();
-void Graph_ProcessGfxCommands(Gfx* commands);
+void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFrame);
 void OTRLogString(const char* src);
 void OTRGfxPrint(const char* str, void* printer, void (*printImpl)(void*, char));
 void OTRSetFrameDivisor(int divisor);

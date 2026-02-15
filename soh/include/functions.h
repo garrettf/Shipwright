@@ -1651,7 +1651,7 @@ GameStateOverlay* Graph_GetNextGameState(GameState* gameState);
 void Graph_Init(GraphicsContext* gfxCtx);
 void Graph_Destroy(GraphicsContext* gfxCtx);
 void Graph_TaskSet00(GraphicsContext* gfxCtx);
-void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState);
+void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState, bool submitTask, bool requestPadData);
 void Graph_ThreadEntry(void*);
 void* Graph_Alloc(GraphicsContext* gfxCtx, size_t size);
 void* Graph_Alloc2(GraphicsContext* gfxCtx, size_t size);

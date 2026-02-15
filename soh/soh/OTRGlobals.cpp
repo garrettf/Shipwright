@@ -1726,7 +1726,7 @@ void RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>
 }
 
 // C->C++ Bridge
-extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
+extern "C" void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFrame) {
     {
         std::unique_lock<std::mutex> Lock(audio.mutex);
         audio.processing = true;
@@ -1766,6 +1766,11 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
 
     if (wnd != nullptr) {
         wnd->SetTargetFps(fps);
+    }
+
+    if (simStepsThisHostFrame > 1) {
+        mtx_replacements.clear();
+        mtx_replacements.emplace_back();
     }
 
     // When the gfx debugger is active, only run with the final mtx

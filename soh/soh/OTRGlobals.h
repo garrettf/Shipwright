@@ -95,7 +95,7 @@ void OTRAudio_Init();
 void OTRMessage_Init();
 void InitAudio();
 void Graph_StartFrame();
-void Graph_ProcessGfxCommands(Gfx* commands);
+void Graph_ProcessGfxCommands(Gfx* commands, int simStepsThisHostFrame);
 void Graph_ProcessFrame(void (*run_one_game_iter)(void));
 float OTRGameSpeed_GetBaseSetting(void);
 float OTRGameSpeed_GetModifier1Setting(void);
