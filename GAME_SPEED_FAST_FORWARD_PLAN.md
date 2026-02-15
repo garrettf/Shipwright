@@ -71,7 +71,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - overridden/multiplied by Mod1/Mod2 behavior
 - Store the effective multiplier in a global helper accessor used by the frame loop.
 
-## 4) Frame-Loop Fast-Forward Core
+## 4) Frame-Loop Fast-Forward Core [DONE]
 
 - Implement accumulator-based variable stepping in frame loop.
 - Concept:

@@ -434,10 +434,15 @@ extern AudioMgr gAudioMgr;
 
 extern void ProcessSaveStateRequests(void);
 
+static float GetCurrentGameSpeed(void) {
+    return OTRGameSpeed_GetEffectiveForInput(gGameState->input[0].cur.button);
+}
+
 static void RunFrame() {
     u32 size;
     char faultMsg[0x50];
     static bool hasSetupSkybox = false;
+    static float gameSpeedAccumulator = 0.0f;
 
     switch (runFrameContext.state) {
         case 0:
@@ -486,7 +491,21 @@ static void RunFrame() {
 
             PadMgr_ThreadEntry(&gPadMgr);
 
-            Graph_Update(&runFrameContext.gfxCtx, gGameState);
+            float gameSpeed = GetCurrentGameSpeed();
+            OTRGameSpeed_SetCurrent(gameSpeed);
+
+            gameSpeedAccumulator += gameSpeed;
+            int simSteps = (int)gameSpeedAccumulator;
+            if (simSteps < 1) {
+                simSteps = 1;
+                gameSpeedAccumulator = 0.0f;
+            } else {
+                gameSpeedAccumulator -= simSteps;
+            }
+
+            for (int simStep = 0; simStep < simSteps && GameState_IsRunning(gGameState); simStep++) {
+                Graph_Update(&runFrameContext.gfxCtx, gGameState);
+            }
             // ticksB = GetPerfCounter();
 
             if (GfxDebuggerIsDebuggingRequested()) {
