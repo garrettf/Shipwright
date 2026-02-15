@@ -106,7 +106,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - poll pad once per host frame (`GameState_ReqPadData` currently at `soh/src/code/graph.c:296`).
   - for extra internal sim steps, clear `press` edge bits so taps do not replay N times.
 
-## 6) Audio Strategy (Important Tradeoff)
+## 6) Audio Strategy (Important Tradeoff) [DONE]
 
 - Fast-forward audio at 2x-8x is the hardest part to make pleasant.
 - Practical options:

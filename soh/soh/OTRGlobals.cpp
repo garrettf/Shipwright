@@ -137,7 +137,7 @@ CrowdControl* CrowdControl::Instance;
 Sail* Sail::Instance;
 Anchor* Anchor::Instance;
 
-static float sCurrentGameSpeed = 1.0f;
+static std::atomic<float> sCurrentGameSpeed = 1.0f;
 
 extern "C" char** cameraStrings;
 
@@ -1009,6 +1009,8 @@ extern "C" void AudioMgr_CreateNextAudioBuffer(s16* samples, u32 num_samples);
 extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len);
 extern "C" int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
+extern "C" int OTRGameSpeed_MuteAudioWhenFast(void);
+extern "C" float OTRGameSpeed_GetCurrent(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
 void OTRAudio_Thread() {
@@ -1033,6 +1035,7 @@ void OTRAudio_Thread() {
 #define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
 #define NUM_AUDIO_CHANNELS 2
 
+        const bool muteFastAudio = OTRGameSpeed_MuteAudioWhenFast() && OTRGameSpeed_GetCurrent() > 1.0f;
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
 
@@ -1041,6 +1044,10 @@ void OTRAudio_Thread() {
         for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
             AudioMgr_CreateNextAudioBuffer(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
                                            num_audio_samples);
+        }
+
+        if (muteFastAudio) {
+            std::fill_n(audio_buffer, num_audio_samples * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE, 0);
         }
 
         AudioPlayer_Play((u8*)audio_buffer,
@@ -1869,11 +1876,11 @@ extern "C" float OTRGameSpeed_GetEffectiveForInput(uint16_t curButtons) {
 }
 
 extern "C" void OTRGameSpeed_SetCurrent(float speed) {
-    sCurrentGameSpeed = ClampGameSpeedSetting(speed, 1.0f);
+    sCurrentGameSpeed.store(ClampGameSpeedSetting(speed, 1.0f), std::memory_order_relaxed);
 }
 
 extern "C" float OTRGameSpeed_GetCurrent(void) {
-    return sCurrentGameSpeed;
+    return sCurrentGameSpeed.load(std::memory_order_relaxed);
 }
 
 float divisor_num = 0.0f;
