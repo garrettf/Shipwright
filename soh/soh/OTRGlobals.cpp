@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -135,6 +136,8 @@ SpeechSynthesizer* SpeechSynthesizer::Instance;
 CrowdControl* CrowdControl::Instance;
 Sail* Sail::Instance;
 Anchor* Anchor::Instance;
+
+static float sCurrentGameSpeed = 1.0f;
 
 extern "C" char** cameraStrings;
 
@@ -1795,6 +1798,50 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
     // OTRTODO: FIGURE OUT END FRAME POINT
     /* if (OTRGlobals::Instance->context->lastScancode != -1)
          OTRGlobals::Instance->context->lastScancode = -1;*/
+}
+
+static float ClampGameSpeedSetting(float speed, float defaultSpeed) {
+    if (std::isnan(speed) || std::isinf(speed)) {
+        return defaultSpeed;
+    }
+
+    return std::clamp(speed, 0.125f, 8.0f);
+}
+
+extern "C" float OTRGameSpeed_GetBaseSetting(void) {
+    return ClampGameSpeedSetting(CVarGetFloat(CVAR_SETTING("GameSpeed.Base"), 1.0f), 1.0f);
+}
+
+extern "C" float OTRGameSpeed_GetModifier1Setting(void) {
+    return ClampGameSpeedSetting(CVarGetFloat(CVAR_SETTING("GameSpeed.Mod1"), 1.0f), 1.0f);
+}
+
+extern "C" float OTRGameSpeed_GetModifier2Setting(void) {
+    return ClampGameSpeedSetting(CVarGetFloat(CVAR_SETTING("GameSpeed.Mod2"), 1.0f), 1.0f);
+}
+
+extern "C" int OTRGameSpeed_IsEnabled(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.Enabled"), 0);
+}
+
+extern "C" int OTRGameSpeed_ShouldUseModifiers(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.UseModifiers"), 0);
+}
+
+extern "C" int OTRGameSpeed_IsToggleMode(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.Toggle"), 0);
+}
+
+extern "C" int OTRGameSpeed_MuteAudioWhenFast(void) {
+    return CVarGetInteger(CVAR_SETTING("GameSpeed.MuteAudioWhenFast"), 1);
+}
+
+extern "C" void OTRGameSpeed_SetCurrent(float speed) {
+    sCurrentGameSpeed = ClampGameSpeedSetting(speed, 1.0f);
+}
+
+extern "C" float OTRGameSpeed_GetCurrent(void) {
+    return sCurrentGameSpeed;
 }
 
 float divisor_num = 0.0f;

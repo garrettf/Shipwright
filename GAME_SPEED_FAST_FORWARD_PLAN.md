@@ -41,7 +41,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
 
 ## Implementation Plan
 
-## 1) Add New Game-Speed CVars
+## 1) Add New Game-Speed CVars [DONE]
 
 - Add setting CVars for:
   - `gSettings.GameSpeed.Enabled` (bool)
