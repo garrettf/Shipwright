@@ -21,6 +21,8 @@ static struct RunFrameContext {
     int state;
 } runFrameContext;
 
+#define GAME_SPEED_MAX_SIM_STEPS 16
+
 OSTime sGraphUpdateTime;
 OSTime sGraphSetTaskTime;
 FaultClient sGraphFaultClient;
@@ -437,6 +439,20 @@ extern AudioMgr gAudioMgr;
 extern void ProcessSaveStateRequests(void);
 
 static float GetCurrentGameSpeed(void) {
+    if (gGameState == NULL || gGameState->unk_A0 || GfxDebuggerIsDebugging() || GfxDebuggerIsDebuggingRequested()) {
+        return 1.0f;
+    }
+
+    if (gGameState->main == Play_Main) {
+        PlayState* play = (PlayState*)gGameState;
+
+        // Safety fallback for known-sensitive states.
+        if (play->pauseCtx.state != 0 || play->pauseCtx.debugState != 0 || play->gameOverCtx.state != GAMEOVER_INACTIVE ||
+            play->transitionTrigger != TRANS_TRIGGER_OFF || play->transitionMode != TRANS_MODE_OFF) {
+            return 1.0f;
+        }
+    }
+
     return OTRGameSpeed_GetEffectiveForInput(gGameState->input[0].cur.button);
 }
 
@@ -508,6 +524,11 @@ static void RunFrame() {
                 gameSpeedAccumulator = 0.0f;
             } else {
                 gameSpeedAccumulator -= simSteps;
+            }
+
+            if (simSteps > GAME_SPEED_MAX_SIM_STEPS) {
+                simSteps = GAME_SPEED_MAX_SIM_STEPS;
+                gameSpeedAccumulator = 0.0f;
             }
 
             for (int simStep = 0; simStep < simSteps && GameState_IsRunning(gGameState); simStep++) {

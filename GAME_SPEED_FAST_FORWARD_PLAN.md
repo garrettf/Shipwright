@@ -117,7 +117,7 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - `soh/soh/OTRGlobals.cpp:1011`
   - `soh/soh/OTRGlobals.cpp:1726`
 
-## 7) Safety Gates
+## 7) Safety Gates [DONE]
 
 - Disable/limit extreme stepping in known sensitive states if needed:
   - pause transitions
