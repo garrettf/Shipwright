@@ -99,9 +99,12 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
   - add `submitTask` flag to `Graph_Update(...)` in `soh/src/code/graph.c:275`.
   - guard task submit block (`Graph_TaskSet00`, pool/fb increments) at `soh/src/code/graph.c:386-390`.
   - run N-1 steps with `submitTask=false`, final step with `submitTask=true`.
-- Interpolation behavior when fast-forwarding:
-  - if `simStepsThisHostFrame > 1`, prefer one final matrix set (no extra interpolation frames) in `Graph_ProcessGfxCommands`.
-  - avoids generating fake in-between frames for skipped logic states.
+- Interpolation behavior when fast-forwarding (final implementation):
+  - keep render submission pacing unchanged in `Graph_ProcessGfxCommands` (`soh/soh/OTRGlobals.cpp`).
+  - preserve the interpolation "previous frame" source across internal substeps:
+    - add `FrameInterpolation_SetPreviousRecordingPreserved(int)` in `soh/soh/frame_interpolation.h` and `soh/soh/frame_interpolation.cpp`.
+    - call it from `RunFrame()` in `soh/src/code/graph.c` so substeps interpolate from host-frame start to host-frame end.
+  - result: correct game-speed pacing at 60 FPS+, with smooth interpolation during multi-step fast-forward.
 - Input stability while stepping:
   - poll pad once per host frame (`GameState_ReqPadData` currently at `soh/src/code/graph.c:296`).
   - for extra internal sim steps, clear `press` edge bits so taps do not replay N times.
@@ -141,6 +144,17 @@ Reason: `R_UPDATE_RATE` is compatibility scaling and mode control, not a clean g
 
 Build verification completed:
 - `cmake --build build-cmake` passed after each section commit (`5`, `6`, `7`, and final section `8` update).
+
+## Post-Implementation Fixes [DONE]
+
+- Runtime regression 1 (fixed):
+  - symptom: `2x` behaved like ~`3x-8x` at 60 FPS.
+  - cause: interpolation flattening changed render submission pacing.
+  - fix: preserve pacing in `Graph_ProcessGfxCommands` (`soh/soh/OTRGlobals.cpp`).
+- Runtime regression 2 (fixed):
+  - symptom: fast-forward looked choppy at 60 FPS+.
+  - cause: interpolation source collapsed to last internal substep.
+  - fix: preserve interpolation previous-recording across internal substeps in `soh/soh/frame_interpolation.cpp`, driven by `soh/src/code/graph.c`.
 
 ## Expected Difficulty
 
