@@ -9,12 +9,12 @@ extern "C" {
 #include "overlays/gamestates/ovl_file_choose/file_choose.h"
 }
 
-static constexpr int32_t CVAR_RESET_BTN_MASK_DEFAULT = BTN_CUSTOM_MODIFIER2;
+static constexpr int32_t CVAR_RESET_BTN_MASK_DEFAULT = BTN_CUSTOM_MODIFIER1 | BTN_CUSTOM_MODIFIER2 | BTN_START;
 #define CVAR_RESET_BTN_MASK_NAME "gSettings.ResetBtn"
 #define CVAR_RESET_BTN_MASK_VALUE CVarGetInteger(CVAR_RESET_BTN_MASK_NAME, CVAR_RESET_BTN_MASK_DEFAULT)
 
 static void OnGameStateMainStartResetHotkey() {
-    const int32_t packed = CVarGetInteger("gSettings.ResetBtn", BTN_CUSTOM_MODIFIER2);
+    const int32_t packed = CVarGetInteger(CVAR_RESET_BTN_MASK_NAME, CVAR_RESET_BTN_MASK_DEFAULT);
 
     const uint16_t mask = static_cast<uint16_t>(packed & 0xFFFF);
 

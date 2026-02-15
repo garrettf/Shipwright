@@ -191,7 +191,7 @@ void SohMenu::AddMenuSettings() {
             "Search input box gets autofocus when visible. Does not affect using other widgets."));
     AddWidget(path, "Reset Button Combination:", WIDGET_CVAR_BTN_SELECTOR)
         .CVar("gSettings.ResetBtn")
-        .Options(BtnSelectorOptions().DefaultValue(BTN_CUSTOM_MODIFIER2));
+        .Options(BtnSelectorOptions().DefaultValue(BTN_CUSTOM_MODIFIER1 | BTN_CUSTOM_MODIFIER2 | BTN_START));
     AddWidget(path, "Open App Files Folder", WIDGET_BUTTON)
         .RaceDisable(false)
         .Callback([](WidgetInfo& info) {
