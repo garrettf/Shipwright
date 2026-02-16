@@ -6,6 +6,10 @@
 
 namespace SOH {
 
+static constexpr int32_t WSOLA_WINDOW_MS = 20;
+static constexpr int32_t WSOLA_SEEK_MS = 24;
+static constexpr float HALF_PI_F = 1.57079632679f;
+
 void GameSpeedTimeStretch::Reset() {
     mInputFifo.clear();
     mOutputFifo.clear();
@@ -100,19 +104,21 @@ int16_t GameSpeedTimeStretch::FloatToS16(float value) {
 }
 
 void GameSpeedTimeStretch::RecomputeParameters() {
-    mWindowFrames = std::max<int32_t>(64, mSampleRate * 20 / 1000);
+    mWindowFrames = std::max<int32_t>(64, mSampleRate * WSOLA_WINDOW_MS / 1000);
     if (mWindowFrames % 2 != 0) {
         mWindowFrames += 1;
     }
 
-    mOverlapFrames = mWindowFrames / 2;
+    // Use a smaller hop than 50% overlap for smoother high-speed stitching.
+    mOverlapFrames = (mWindowFrames * 2) / 3;
     mHopOutFrames = mWindowFrames - mOverlapFrames;
-    mSeekFrames = std::max<int32_t>(mSampleRate * 30 / 1000, mOverlapFrames);
+    mSeekFrames = std::max<int32_t>(mSampleRate * WSOLA_SEEK_MS / 1000, mOverlapFrames);
 }
 
 void GameSpeedTimeStretch::ResetSynthesisState() {
     mHasPrevOverlap = false;
     mAnalysisPosFrames = 0;
+    mPrevOverlapEnergy = 1.0f;
     mPrevOverlap.assign(static_cast<size_t>(mOverlapFrames) * static_cast<size_t>(mChannels), 0.0f);
     mStats.synthesisResets++;
 }
@@ -213,17 +219,22 @@ int16_t GameSpeedTimeStretch::ReadSample(size_t frame, size_t channel) const {
 }
 
 float GameSpeedTimeStretch::CorrelationScore(size_t candidateStartFrame) const {
-    float score = 0.0f;
+    float dot = 0.0f;
+    float candidateEnergy = 0.0f;
     for (int32_t i = 0; i < mOverlapFrames; i++) {
         const size_t frame = candidateStartFrame + static_cast<size_t>(i);
         const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
 
         for (int32_t c = 0; c < mChannels; c++) {
-            score += mPrevOverlap[overlapBase + static_cast<size_t>(c)] * ReadSample(frame, static_cast<size_t>(c));
+            const float previous = mPrevOverlap[overlapBase + static_cast<size_t>(c)];
+            const float current = static_cast<float>(ReadSample(frame, static_cast<size_t>(c)));
+            dot += previous * current;
+            candidateEnergy += current * current;
         }
     }
 
-    return score;
+    const float denom = std::sqrt(std::max(1.0f, mPrevOverlapEnergy * candidateEnergy));
+    return dot / denom;
 }
 
 void GameSpeedTimeStretch::AppendRawHop(size_t segmentStartFrame) {
@@ -237,8 +248,10 @@ void GameSpeedTimeStretch::AppendRawHop(size_t segmentStartFrame) {
 
 void GameSpeedTimeStretch::AppendBlendedHop(size_t segmentStartFrame) {
     for (int32_t i = 0; i < mHopOutFrames; i++) {
-        const float alpha = static_cast<float>(i + 1) / static_cast<float>(mHopOutFrames + 1);
-        const float beta = 1.0f - alpha;
+        const float t = static_cast<float>(i + 1) / static_cast<float>(mHopOutFrames + 1);
+        // Equal-power crossfade reduces combing/phasiness versus linear fades.
+        const float alpha = std::sin(t * HALF_PI_F);
+        const float beta = std::cos(t * HALF_PI_F);
         const size_t frame = segmentStartFrame + static_cast<size_t>(i);
         const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
 
@@ -251,15 +264,18 @@ void GameSpeedTimeStretch::AppendBlendedHop(size_t segmentStartFrame) {
 }
 
 void GameSpeedTimeStretch::CaptureOverlap(size_t overlapStartFrame) {
+    float energy = 0.0f;
     for (int32_t i = 0; i < mOverlapFrames; i++) {
         const size_t frame = overlapStartFrame + static_cast<size_t>(i);
         const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
 
         for (int32_t c = 0; c < mChannels; c++) {
-            mPrevOverlap[overlapBase + static_cast<size_t>(c)] =
-                static_cast<float>(ReadSample(frame, static_cast<size_t>(c)));
+            const float sample = static_cast<float>(ReadSample(frame, static_cast<size_t>(c)));
+            mPrevOverlap[overlapBase + static_cast<size_t>(c)] = sample;
+            energy += sample * sample;
         }
     }
+    mPrevOverlapEnergy = std::max(1.0f, energy);
 }
 
 void GameSpeedTimeStretch::DiscardConsumedInput() {

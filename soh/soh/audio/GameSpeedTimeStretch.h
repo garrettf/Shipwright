@@ -66,6 +66,7 @@ class GameSpeedTimeStretch {
     std::vector<float> mPrevOverlap;
     bool mHasPrevOverlap = false;
     size_t mAnalysisPosFrames = 0;
+    float mPrevOverlapEnergy = 1.0f;
 
     GameSpeedTimeStretchStats mStats;
 };
