@@ -7,8 +7,8 @@
 namespace SOH {
 
 static constexpr int32_t WSOLA_WINDOW_MS = 20;
-static constexpr int32_t WSOLA_SEEK_MS = 24;
-static constexpr float HALF_PI_F = 1.57079632679f;
+static constexpr int32_t WSOLA_SEEK_MS = 30;
+static constexpr float WSOLA_TIMELINE_PENALTY_PER_FRAME = 0.00025f;
 
 void GameSpeedTimeStretch::Reset() {
     mInputFifo.clear();
@@ -109,8 +109,7 @@ void GameSpeedTimeStretch::RecomputeParameters() {
         mWindowFrames += 1;
     }
 
-    // Use a smaller hop than 50% overlap for smoother high-speed stitching.
-    mOverlapFrames = (mWindowFrames * 2) / 3;
+    mOverlapFrames = mWindowFrames / 2;
     mHopOutFrames = mWindowFrames - mOverlapFrames;
     mSeekFrames = std::max<int32_t>(mSampleRate * WSOLA_SEEK_MS / 1000, mOverlapFrames);
 }
@@ -178,12 +177,17 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
         // Keep candidate search near expected timeline to avoid drifting backward and slowing tempo.
         const size_t maxBacktrack = static_cast<size_t>(std::max(1, mOverlapFrames / 4));
         const size_t searchStart = expectedStart > maxBacktrack ? (expectedStart - maxBacktrack) : 0;
-        const size_t searchEnd = std::max(searchStart, std::min(maxStart, expectedStart + static_cast<size_t>(mSeekFrames / 2)));
+        const size_t searchForward = static_cast<size_t>(std::max(1, mSeekFrames / 3));
+        const size_t searchEnd = std::max(searchStart, std::min(maxStart, expectedStart + searchForward));
 
         size_t bestStart = searchStart;
-        float bestScore = CorrelationScore(searchStart);
+        const auto DistancePenalty = [&](size_t candidate) -> float {
+            return WSOLA_TIMELINE_PENALTY_PER_FRAME *
+                   static_cast<float>(std::abs(static_cast<int64_t>(candidate) - static_cast<int64_t>(expectedStart)));
+        };
+        float bestScore = CorrelationScore(searchStart) - DistancePenalty(searchStart);
         for (size_t candidate = searchStart + 1; candidate <= searchEnd; candidate++) {
-            const float score = CorrelationScore(candidate);
+            const float score = CorrelationScore(candidate) - DistancePenalty(candidate);
             if (score > bestScore) {
                 bestScore = score;
                 bestStart = candidate;
@@ -249,9 +253,8 @@ void GameSpeedTimeStretch::AppendRawHop(size_t segmentStartFrame) {
 void GameSpeedTimeStretch::AppendBlendedHop(size_t segmentStartFrame) {
     for (int32_t i = 0; i < mHopOutFrames; i++) {
         const float t = static_cast<float>(i + 1) / static_cast<float>(mHopOutFrames + 1);
-        // Equal-power crossfade reduces combing/phasiness versus linear fades.
-        const float alpha = std::sin(t * HALF_PI_F);
-        const float beta = std::cos(t * HALF_PI_F);
+        const float alpha = t;
+        const float beta = 1.0f - alpha;
         const size_t frame = segmentStartFrame + static_cast<size_t>(i);
         const size_t overlapBase = static_cast<size_t>(i) * static_cast<size_t>(mChannels);
 
