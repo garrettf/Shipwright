@@ -7,8 +7,8 @@
 namespace SOH {
 
 static constexpr int32_t WSOLA_WINDOW_MS = 20;
-static constexpr int32_t WSOLA_SEEK_MS = 24;
-static constexpr float WSOLA_TIMELINE_PENALTY_PER_FRAME = 0.00035f;
+static constexpr int32_t WSOLA_SEEK_MS = 30;
+static constexpr float WSOLA_TIMELINE_PENALTY_PER_FRAME = 0.00025f;
 
 void GameSpeedTimeStretch::Reset() {
     mInputFifo.clear();
@@ -109,8 +109,7 @@ void GameSpeedTimeStretch::RecomputeParameters() {
         mWindowFrames += 1;
     }
 
-    // Slightly smaller overlap keeps transients sharper while still hiding seams.
-    mOverlapFrames = (mWindowFrames * 2) / 5;
+    mOverlapFrames = mWindowFrames / 2;
     mHopOutFrames = mWindowFrames - mOverlapFrames;
     mSeekFrames = std::max<int32_t>(mSampleRate * WSOLA_SEEK_MS / 1000, mOverlapFrames);
 }
@@ -176,9 +175,9 @@ void GameSpeedTimeStretch::GenerateWsolaOutputFrames(size_t minFrames) {
 
         const size_t expectedStart = std::min(mAnalysisPosFrames, maxStart);
         // Keep candidate search near expected timeline to avoid drifting backward and slowing tempo.
-        const size_t maxBacktrack = static_cast<size_t>(std::max(1, mOverlapFrames / 5));
+        const size_t maxBacktrack = static_cast<size_t>(std::max(1, mOverlapFrames / 4));
         const size_t searchStart = expectedStart > maxBacktrack ? (expectedStart - maxBacktrack) : 0;
-        const size_t searchForward = static_cast<size_t>(std::max(1, mSeekFrames / 4));
+        const size_t searchForward = static_cast<size_t>(std::max(1, mSeekFrames / 3));
         const size_t searchEnd = std::max(searchStart, std::min(maxStart, expectedStart + searchForward));
 
         size_t bestStart = searchStart;
