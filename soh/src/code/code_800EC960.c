@@ -863,6 +863,7 @@ u8 sNotePlaybackVibrato = 0;
 s8 sNotePlaybackTone = 0;
 f32 sNormalizedNotePlaybackTone = 1.0f;
 f32 sNormalizedNotePlaybackVolume = 1.0f;
+f32 sOcaPlaybackStepRemainder = 0.0f;
 s32 D_80130F68 = 0;
 u8 sOcarinaNoteValues[5] = { 2, 5, 9, 11, 14 };
 u8 sOcaMinigameAppendPos = 0;
@@ -1709,6 +1710,7 @@ void Audio_OcaSetInstrument(u8 arg0) {
         Audio_StopSfxById(NA_SE_OC_OCARINA);
         Audio_SetSoundBanksMute(0);
         sPlaybackState = 0;
+        sOcaPlaybackStepRemainder = 0.0f;
         sStaffPlaybackPos = 0;
         sOcarinaInpEnabled = 0;
         D_80130F3C = 0;
@@ -1724,6 +1726,7 @@ void Audio_OcaSetInstrument(u8 arg0) {
 void Audio_OcaSetSongPlayback(s8 songIdxPlusOne, s8 playbackState) {
     if (songIdxPlusOne == 0) {
         sPlaybackState = 0;
+        sOcaPlaybackStepRemainder = 0.0f;
         Audio_StopSfxById(NA_SE_OC_OCARINA);
         return;
     }
@@ -1735,6 +1738,7 @@ void Audio_OcaSetSongPlayback(s8 songIdxPlusOne, s8 playbackState) {
     }
 
     sPlaybackState = playbackState;
+    sOcaPlaybackStepRemainder = 0.0f;
     sNotePlaybackTimer = 0;
     sDisplayedNoteValue = 0xFF;
     sPlaybackNotePos = 0;
@@ -1747,6 +1751,8 @@ void Audio_OcaSetSongPlayback(s8 songIdxPlusOne, s8 playbackState) {
 void Audio_OcaPlayback(void) {
     u32 noteTimerStep;
     u32 nextNoteTimerStep = 0;
+    f32 gameSpeed;
+    f32 scaledNoteTimerStep;
 
     if (sPlaybackState != 0) {
         if (sStaffPlaybackPos == 0) {
@@ -1754,6 +1760,15 @@ void Audio_OcaPlayback(void) {
         } else {
             noteTimerStep = D_8016BA04 - D_80130F68;
         }
+
+        gameSpeed = OTRGameSpeed_GetCurrent();
+        if (!(gameSpeed > 0.0f)) {
+            gameSpeed = 1.0f;
+        }
+
+        scaledNoteTimerStep = (noteTimerStep * gameSpeed) + sOcaPlaybackStepRemainder;
+        noteTimerStep = (u32)scaledNoteTimerStep;
+        sOcaPlaybackStepRemainder = scaledNoteTimerStep - noteTimerStep;
 
         if (noteTimerStep < sNotePlaybackTimer) {
             sNotePlaybackTimer -= noteTimerStep;
