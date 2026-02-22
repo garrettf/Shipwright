@@ -172,20 +172,20 @@ s32 func_80BA2218(ObjWarp2block* this, PlayState* play) {
 }
 
 s32 func_80BA228C(ObjWarp2block* this, PlayState* play) {
-    if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
+    if (play->msgCtx.lastPlayedSong == OCARINA_SONG_TIME && this->unk_172 != OCARINA_SONG_TIME && this->unk_16E <= 0) {
+        // Latch the successful song trigger; playback duration can vary with game speed.
+        this->unk_16E = 0x6E;
+    }
+
+    if (this->unk_16E > 0) {
+        this->unk_16E--;
+        if (this->unk_16E == 0) {
+            return 1;
+        }
+    } else if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
         this->func_168 = func_80BA2218;
     }
 
-    if (play->msgCtx.lastPlayedSong == OCARINA_SONG_TIME) {
-        if (this->unk_172 == 0xFE) {
-            this->unk_16E = 0x6E;
-        } else {
-            this->unk_16E--;
-            if (this->unk_16E == 0) {
-                return 1;
-            }
-        }
-    }
     return 0;
 }
 
