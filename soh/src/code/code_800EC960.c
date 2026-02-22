@@ -1750,7 +1750,7 @@ void Audio_OcaSetSongPlayback(s8 songIdxPlusOne, s8 playbackState) {
 
 void Audio_OcaPlayback(void) {
     u32 noteTimerStep;
-    u32 nextNoteTimerStep = 0;
+    u32 remainingStep;
     f32 gameSpeed;
     f32 scaledNoteTimerStep;
 
@@ -1769,15 +1769,18 @@ void Audio_OcaPlayback(void) {
         scaledNoteTimerStep = (noteTimerStep * gameSpeed) + sOcaPlaybackStepRemainder;
         noteTimerStep = (u32)scaledNoteTimerStep;
         sOcaPlaybackStepRemainder = scaledNoteTimerStep - noteTimerStep;
+        remainingStep = noteTimerStep;
 
-        if (noteTimerStep < sNotePlaybackTimer) {
-            sNotePlaybackTimer -= noteTimerStep;
-        } else {
-            nextNoteTimerStep = noteTimerStep - sNotePlaybackTimer;
+        while (sPlaybackState != 0) {
+            if (sNotePlaybackTimer != 0 && remainingStep < sNotePlaybackTimer) {
+                sNotePlaybackTimer -= remainingStep;
+                break;
+            }
+
+            if (sNotePlaybackTimer != 0) {
+                remainingStep -= sNotePlaybackTimer;
+            }
             sNotePlaybackTimer = 0;
-        }
-
-        if (sNotePlaybackTimer == 0) {
 
             sNotePlaybackTimer = sPlaybackSong[sPlaybackNotePos].unk_02;
 
@@ -1795,8 +1798,6 @@ void Audio_OcaPlayback(void) {
                     Audio_StopSfxById(NA_SE_OC_OCARINA);
                 }
                 return;
-            } else {
-                sNotePlaybackTimer -= nextNoteTimerStep;
             }
 
             if (sNotePlaybackVolume != sPlaybackSong[sPlaybackNotePos].volume) {
@@ -1840,6 +1841,10 @@ void Audio_OcaPlayback(void) {
                 }
             }
             sPlaybackNotePos++;
+
+            if (remainingStep == 0) {
+                break;
+            }
         }
     }
 }
