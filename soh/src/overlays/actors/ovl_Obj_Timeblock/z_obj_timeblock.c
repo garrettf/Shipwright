@@ -184,20 +184,19 @@ s32 ObjTimeblock_WaitForOcarina(ObjTimeblock* this, PlayState* play) {
 }
 
 s32 ObjTimeblock_WaitForSong(ObjTimeblock* this, PlayState* play) {
-    if (play->msgCtx.lastPlayedSong == OCARINA_SONG_TIME && this->unk_172 != OCARINA_SONG_TIME && this->songEndTimer <= 0) {
-        // Latch the successful song trigger; playback duration can vary with game speed.
-        this->songEndTimer = 110;
-    }
-
-    if (this->songEndTimer > 0) {
-        this->songEndTimer--;
-        if (this->songEndTimer == 0) {
-            return true;
-        }
-    } else if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
+    if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
         this->songObserverFunc = ObjTimeblock_WaitForOcarina;
     }
-
+    if (play->msgCtx.lastPlayedSong == OCARINA_SONG_TIME) {
+        if (this->unk_172 == 254) {
+            this->songEndTimer = 110;
+        } else {
+            this->songEndTimer--;
+            if (this->songEndTimer == 0) {
+                return true;
+            }
+        }
+    }
     return false;
 }
 

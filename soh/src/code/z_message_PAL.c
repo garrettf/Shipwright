@@ -2950,6 +2950,9 @@ void Message_StartOcarina(PlayState* play, u16 ocarinaActionId) {
     sOcarinaNoteBufLen = 0;
     Message_ResetOcarinaNoteState();
     sLastPlayedSong = msgCtx->unk_E3F2 = msgCtx->lastOcaNoteIdx = 0xFF;
+    // Keep song detection state transitions stable for all ocarina proximity checks:
+    // listening (0xFE) -> resolved song id.
+    msgCtx->lastPlayedSong = 0xFE;
 
     // "Ocarina Number"
     osSyncPrintf(VT_FGCOL(RED) "☆☆☆☆☆ オカリナ番号＝%d(%d) ☆☆☆☆☆\n" VT_RST, ocarinaActionId, 2);
